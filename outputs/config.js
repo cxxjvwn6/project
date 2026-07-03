@@ -4,5 +4,6 @@ window.AIRBOARD_CONFIG = Object.freeze({
   authRedirectUri: "",
   schoolLocationServiceKey: "",
   schoolLocationApiUrl: "https://api.data.go.kr/openapi/tn_pubr_public_elesch_mskul_lc_api",
-  schoolLocationPageSize: 5000
+  schoolLocationPageSize: 5000,
+  schoolLocationMaxPages: 80
 });

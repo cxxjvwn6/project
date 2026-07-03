@@ -28,6 +28,8 @@ const sampleImage = "https://images.unsplash.com/photo-1434030216411-0b793f4b417
 const sampleImage2 = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=1200&q=80";
 const sampleVideo = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const samplePdf = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+const SCHOOL_TYPES = ["전체", "초등학교", "중학교", "고등학교", "특수학교"];
+const OFFICIAL_SCHOOL_TYPES = ["초등학교", "중학교", "고등학교", "특수학교"];
 
 const seedSchools = [
   { id: "seoul-daedo-elementary", name: "서울대도초등학교", location: "서울특별시 강남구", address: "서울특별시 강남구 도곡동 선릉로 209", lat: 37.494, lng: 127.063, members: 126, rating: 8.6, wiki: { description: "서울 강남구에 위치한 초등학교.", trivia: "학생 참여형 교내 활동이 꾸준히 운영된다.", extra: "학교별 소식과 커뮤니티 게시물을 확인할 수 있다." }, revisions: [] },
@@ -109,9 +111,10 @@ state.schools = [
     name: canonical?.name || school.name,
     location: canonical?.location || school.location,
     address: canonical?.address || school.address || school.location || "",
-    type: school.type || (school.name.includes("초등") ? "초등학교" : school.name.includes("중학교") ? "중학교" : "고등학교")
+    type: normalizeSchoolType({ ...school, name: canonical?.name || school.name })
   };
 });
+if (!SCHOOL_TYPES.includes(state.mapSchoolType)) state.mapSchoolType = "전체";
 const realtime = "BroadcastChannel" in window ? new BroadcastChannel("airboard-dm") : null;
 const runtimeConfig = window.AIRBOARD_CONFIG || {};
 const oauthConfig = {
@@ -119,6 +122,18 @@ const oauthConfig = {
   Apple: { slug: "apple" },
   Kakao: { slug: "kakao" }
 };
+
+function schoolTypeOf(value = "") {
+  const text = String(value);
+  if (/특수/.test(text)) return "특수학교";
+  if (/초등|초교|elementary/i.test(text)) return "초등학교";
+  if (/중학|중학교|middle/i.test(text)) return "중학교";
+  if (/고등|고교|high/i.test(text)) return "고등학교";
+  return "";
+}
+function normalizeSchoolType(school) {
+  return schoolTypeOf(school.type) || schoolTypeOf(school.name) || "고등학교";
+}
 
 const dialogs = {
   schedule: $("#scheduleDialog"), login: $("#loginDialog"), signup: $("#signupDialog"), upload: $("#uploadDialog"),
@@ -239,14 +254,54 @@ function runCommand(command) {
   if (command === "messages") return openDm();
 }
 
+function schoolByName(name) {
+  if (!name) return null;
+  return state.schools.find((school) => school.name === name) || state.schools.find((school) => school.name.includes(name) || name.includes(school.name));
+}
+function schoolStats(name) {
+  const school = schoolByName(name) || { name, members: 0, rating: 0, location: "", type: "" };
+  const posts = state.posts.filter((post) => post.school === school.name || post.school === name);
+  const resources = posts.filter((post) => post.media?.length);
+  const activeStudents = [...new Set(posts.map((post) => post.author))];
+  const tags = posts.flatMap((post) => post.tags || []);
+  const tagCounts = tags.reduce((map, tag) => (map.set(tag, (map.get(tag) || 0) + 1), map), new Map());
+  return {
+    school,
+    posts,
+    resources,
+    activeStudents,
+    trending: [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag]) => tag),
+    contributors: activeStudents.map((author) => ({
+      author,
+      count: posts.filter((post) => post.author === author).length,
+      score: Number(profileScore(author))
+    })).sort((a, b) => b.count - a.count || b.score - a.score).slice(0, 4)
+  };
+}
+function rankedSchools() {
+  return state.schools.map((school) => {
+    const stats = schoolStats(school.name);
+    return { ...school, activity: stats.posts.length * 3 + stats.resources.length * 4 + school.members, resourceCount: stats.resources.length };
+  }).sort((a, b) => b.activity - a.activity).slice(0, 5);
+}
+
 function renderHome() {
   const agenda = currentAgenda();
   const dateTitle = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(agenda.today);
+  const mySchool = schoolStats(state.profile.school);
   $("#app").innerHTML = `
-    ${sectionTitle(dateTitle, `<button class="primary icon-primary" data-action="open-schedule" aria-label="일정 등록">${icon("plus")}</button>`)}
+    <section class="school-home-hero panel">
+      <div><span class="school-badge">${mySchool.school.type || "학교"}</span><h1>${state.profile.school} AirBoard</h1><p>${state.profile.grade} ${state.profile.className} · ${state.profile.role}${state.profile.position ? ` · ${state.profile.position}` : ""}</p></div>
+      <div class="school-home-actions"><button class="ghost" data-action="go" data-view="map">${icon("map")}학교 허브</button><button class="primary icon-primary" data-action="open-schedule" aria-label="일정 등록">${icon("plus")}</button></div>
+    </section>
+    ${sectionTitle(dateTitle)}
     <section class="schedule-columns home-agenda">
       <article class="panel"><div class="section-title"><h2>이번주</h2></div>${scheduleList(agenda.week)}</article>
       <article class="panel"><div class="section-title"><h2>다가오는 일정</h2></div>${scheduleList(agenda.upcoming)}</article>
+    </section>
+    <section class="school-home-grid">
+      <article class="panel school-mini-hub"><div class="section-title"><h2>${state.profile.school} 활동</h2></div><div class="school-stat-grid"><span><strong>${mySchool.posts.length}</strong><small>게시글</small></span><span><strong>${mySchool.resources.length}</strong><small>자료</small></span><span><strong>${mySchool.activeStudents.length}</strong><small>활동 학생</small></span></div><div class="tag-row">${(mySchool.trending.length ? mySchool.trending : ["#우리학교", "#수행평가", "#자료공유"]).map((tag) => `<span class="tag">${tag}</span>`).join("")}</div></article>
+      <article class="panel school-ranking"><div class="section-title"><h2>활동 학교</h2></div>${rankedSchools().map((school, index) => `<button class="rank-row" data-action="focus-school" data-id="${school.id}"><strong>${index + 1}</strong><span>${school.name}<small>${school.location} · 자료 ${school.resourceCount}개</small></span></button>`).join("")}</article>
     </section>
     <section class="panel calendar-panel">${calendarMarkup()}</section>`;
 }
@@ -307,23 +362,29 @@ function renderMap() {
   const schools = filteredMapSchools();
   const school = state.mapDetailOpen ? schools.find((item) => item.id === state.selectedSchool) : null;
   const schoolPosts = school ? state.posts.filter((post) => post.school === school.name) : [];
-  const dataStatus = state.schoolDataStatus === "official" ? "전국 데이터" : state.schoolDataStatus === "loading" ? "전국 데이터 로딩 중" : "샘플 데이터";
+  const dataStatus = state.schoolDataStatus === "official" ? "공식 전국 학교 데이터" : state.schoolDataStatus === "loading" ? "공식 데이터 로딩 중" : "공식 API 키 필요";
+  const listSchools = schools.slice(0, 28);
   $("#app").innerHTML = `<section class="map-layout">
     <div id="realMap"></div>
     <div class="map-command">
       <label class="map-search">${icon("search")}<input id="mapSearch" value="${state.mapQuery}" placeholder="학교 또는 지역 검색" aria-label="학교 또는 지역 검색" autocomplete="off" />${state.mapQuery ? `<button type="button" class="icon-button map-search-clear" data-action="clear-map-search" aria-label="검색 지우기">${icon("x")}</button>` : ""}</label>
-      <div class="map-filters">${["전체", "초등학교", "중학교", "고등학교"].map((type) => `<button type="button" class="map-filter ${state.mapSchoolType === type ? "active" : ""}" data-action="map-school-filter" data-type="${type}">${type}</button>`).join("")}</div>
+      <div class="map-filters">${SCHOOL_TYPES.map((type) => `<button type="button" class="map-filter ${state.mapSchoolType === type ? "active" : ""}" data-action="map-school-filter" data-type="${type}">${type}</button>`).join("")}</div>
       <span class="map-result-count">${dataStatus} · 표시 중 ${schools.length}개</span>
     </div>
+    <aside class="map-school-list ${school ? "compact" : ""}"><div class="map-list-head"><strong>학교 커뮤니티</strong><span>${schools.length}개</span></div>${listSchools.length ? listSchools.map((item) => `<button class="map-school-row ${item.id === state.selectedSchool ? "selected" : ""}" data-action="select-map-school" data-id="${item.id}"><span class="school-row-dot"></span><span><strong>${item.name}</strong><small>${item.location || item.address}</small></span>${icon("chevron-right")}</button>`).join("") : empty("search-x", "검색 결과가 없습니다.")}</aside>
     ${school ? `<aside class="school-detail"><div class="school-preview">${schoolDetailMarkup(school, schoolPosts)}</div></aside>` : ""}
   </section>`;
   setTimeout(initMap, 0);
 }
 function schoolDetailMarkup(school, posts) {
   const shown = posts.slice(0, state.schoolPostLimit);
-  return `<article class="panel"><div class="school-detail-head"><div><h1>${school.name}</h1><p class="muted">${school.address || school.location}</p></div><button class="icon-button" data-action="close-school-detail" aria-label="학교 정보 닫기">${icon("x")}</button></div><span class="school-member">${school.members}명 가입</span>
+  const stats = schoolStats(school.name);
+  return `<article class="panel"><div class="school-detail-head"><div><span class="school-badge">${school.type}</span><h1>${school.name} AirBoard</h1><p class="muted">${school.address || school.location}</p></div><button class="icon-button" data-action="close-school-detail" aria-label="학교 정보 닫기">${icon("x")}</button></div><span class="school-member">${school.members}명 가입</span>
     <div class="school-review-summary"><strong>${school.rating.toFixed(1)}</strong><span>학교 리뷰 평점</span><small>${posts.length}개의 학교 활동 리뷰</small></div>
+    <div class="school-stat-grid"><span><strong>${posts.length}</strong><small>게시글</small></span><span><strong>${stats.resources.length}</strong><small>자료</small></span><span><strong>${stats.activeStudents.length}</strong><small>활동 학생</small></span></div>
+    <div class="school-highlight-strip">${(stats.trending.length ? stats.trending : ["#학교소식", "#자료공유", "#수행평가"]).map((tag) => `<span class="tag">${tag}</span>`).join("")}</div>
     <div class="school-reviews"><strong>학생 리뷰</strong>${posts.length ? posts.slice(0, 3).map((post) => `<button class="school-review" data-action="open-post" data-id="${post.id}"><span class="avatar">${post.author.slice(0, 1)}</span><span><strong>${post.author}</strong><small>${post.body}</small></span></button>`).join("") : empty("message-circle", "아직 등록된 리뷰가 없습니다.")}</div>
+    <div class="school-contributors"><strong>학교 기여자</strong>${stats.contributors.length ? stats.contributors.map((item) => `<button class="contributor-chip" data-action="view-author" data-author="${item.author}"><span class="avatar">${item.author.slice(0, 1)}</span><span>${item.author}<small>${item.count}개 활동 · 평판 ${item.score.toFixed(1)}</small></span></button>`).join("") : empty("users", "아직 활동 기여자가 없습니다.")}</div>
     <div class="wiki-panel"><div class="wiki-actions"><strong>학교 위키</strong><div class="toolbar"><button class="tiny" data-action="edit-wiki">${icon("pencil")}수정</button><button class="tiny" data-action="wiki-history">${icon("history")}기록</button></div></div>
       <div class="wiki-section"><strong>학교 설명</strong><p>${school.wiki.description}</p></div>
       <div class="wiki-section"><strong>학교 평점</strong><p class="rating">${school.rating.toFixed(1)} / 10</p></div>
@@ -335,7 +396,7 @@ function schoolDetailMarkup(school, posts) {
 function initMap() {
   if (!window.L || !$("#realMap")) return;
   if (state.map) { state.mapView = { center: [state.map.getCenter().lat, state.map.getCenter().lng], zoom: state.map.getZoom() }; state.map.remove(); state.map = null; }
-  state.map = L.map("realMap", { zoomControl: false, preferCanvas: true, zoomSnap: 1, zoomAnimation: true, zoomAnimationThreshold: 8, fadeAnimation: true, markerZoomAnimation: true, inertia: true, easeLinearity: .18, wheelDebounceTime: 20, wheelPxPerZoomLevel: 90 }).setView(state.mapView.center, state.mapView.zoom);
+  state.map = L.map("realMap", { zoomControl: false, preferCanvas: true, zoomSnap: .25, zoomDelta: .5, wheelDebounceTime: 12, wheelPxPerZoomLevel: 120, zoomAnimation: true, zoomAnimationThreshold: 10, fadeAnimation: true, markerZoomAnimation: true, inertia: true, inertiaDeceleration: 2400, easeLinearity: .16 }).setView(state.mapView.center, state.mapView.zoom);
   L.control.zoom({ position: "topright" }).addTo(state.map);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(state.map);
   state.map._airMarkers = L.layerGroup().addTo(state.map);
@@ -348,10 +409,10 @@ function initMap() {
       const visibleBounds = state.map.getBounds().pad(.28); state.map._airMarkers.clearLayers();
       const visible = (item) => visibleBounds.contains([item.lat, item.lng]);
       const schools = filteredMapSchools().filter(visible);
-      if (zoom < 8) clusterSchoolsByArea(schools, "province").forEach((item) => addCluster(item, 9, "region"));
-      else if (zoom < 10) clusterSchoolsByArea(schools, "city").forEach((item) => addCluster(item, 11, "city"));
-      else if (zoom < 13) clusterSchoolsByArea(schools, "district").forEach((item) => addCluster(item, 14, "district"));
-      else if (zoom < 15) clusterSchoolsByArea(schools, "neighborhood").forEach((item) => addCluster(item, 16, "neighborhood"));
+      if (zoom < 7.75) clusterSchoolsByArea(schools, "province").forEach((item) => addCluster(item, 8.75, "region"));
+      else if (zoom < 10.25) clusterSchoolsByArea(schools, "city").forEach((item) => addCluster(item, 11.25, "city"));
+      else if (zoom < 12.75) clusterSchoolsByArea(schools, "district").forEach((item) => addCluster(item, 13.75, "district"));
+      else if (zoom < 15.25) clusterSchoolsByArea(schools, "neighborhood").forEach((item) => addCluster(item, 16.25, "neighborhood"));
       else drawSchools(schools, zoom);
     });
   };
@@ -359,7 +420,7 @@ function initMap() {
     const label = `${item.name} ${item.count}`;
     const marker = L.marker([item.lat, item.lng], { icon: L.divIcon({ className: "", html: `<div class="cluster-pin cluster-${tier}"><strong>${item.count}</strong><span>${item.name}</span></div>`, iconSize: [66, 50], iconAnchor: [33, 25] }) }).addTo(state.map._airMarkers);
     marker.bindTooltip(`${item.name} · 학교 ${item.count}개`, { direction: "top", offset: [0, -22] });
-    marker.on("click", () => state.map.flyTo([item.lat, item.lng], Math.max(targetZoom, state.map.getZoom() + 2), { duration: .78, easeLinearity: .2 }));
+    marker.on("click", () => state.map.flyTo([item.lat, item.lng], Math.max(targetZoom, state.map.getZoom() + 1.5), { duration: .9, easeLinearity: .16 }));
     marker.getElement()?.setAttribute("aria-label", label);
   };
   const addSchoolMarker = (school) => {
@@ -385,7 +446,10 @@ function initMap() {
 }
 function selectSchool(id) {
   state.selectedSchool = id; state.schoolPostLimit = 3; state.mapDetailOpen = true;
-  const school = state.schools.find((item) => item.id === id); const posts = state.posts.filter((post) => post.school === school.name);
+  const school = state.schools.find((item) => item.id === id);
+  if (!school) return;
+  const posts = state.posts.filter((post) => post.school === school.name);
+  if (state.map && school) state.map.panTo([school.lat, school.lng], { animate: true, duration: .45 });
   $(".school-detail")?.remove();
   $(".map-layout")?.insertAdjacentHTML("beforeend", `<aside class="school-detail"><div class="school-preview">${schoolDetailMarkup(school, posts)}</div></aside>`);
   lucide();
@@ -395,7 +459,7 @@ function orderedPosts() {
   const ids = state.posts.map((post) => post.id);
   if (!state.feedOrder.length || state.feedOrder.some((id) => !ids.includes(id)) || ids.some((id) => !state.feedOrder.includes(id))) {
     const randomWeight = new Map(state.posts.map((post) => [post.id, Math.random()]));
-    state.feedOrder = [...state.posts].sort((a, b) => Number(state.following.includes(b.author)) - Number(state.following.includes(a.author)) || randomWeight.get(a.id) - randomWeight.get(b.id)).map((post) => post.id);
+    state.feedOrder = [...state.posts].sort((a, b) => Number(state.following.includes(b.author)) - Number(state.following.includes(a.author)) || Number(b.school === state.profile.school) - Number(a.school === state.profile.school) || randomWeight.get(a.id) - randomWeight.get(b.id)).map((post) => post.id);
   }
   if (state.justUploaded) state.feedOrder = [state.justUploaded, ...state.feedOrder.filter((id) => id !== state.justUploaded)];
   return state.feedOrder.map((id) => state.posts.find((post) => post.id === id)).filter(Boolean);
@@ -649,6 +713,7 @@ document.addEventListener("click", (event) => {
   if (action === "toggle-follow") { const author = target.dataset.author; state.following = state.following.includes(author) ? state.following.filter((item) => item !== author) : [...state.following, author]; saveAll(); return state.view === "profile" ? renderProfile(author) : refreshPostCard(target.closest(".post-card")?.id); }
   if (action === "dm-author") return openDm(target.dataset.author);
   if (action === "open-post") { dialogs.collection.open && dialogs.collection.close(); state.view = "feed"; state.feedQuery = ""; state.feedTags = []; updateChrome(); renderFeed(); setTimeout(() => document.getElementById(target.dataset.id)?.scrollIntoView({ behavior: "smooth" }), 0); return; }
+  if (action === "focus-school") { const school = state.schools.find((item) => item.id === target.dataset.id); if (!school) return; state.view = "map"; state.selectedSchool = school.id; state.mapDetailOpen = true; state.mapView = { center: [school.lat, school.lng], zoom: Math.max(15, state.mapView.zoom || 7) }; saveAll(); return render(); }
   if (action === "edit-profile") { dialogs.settings.open && dialogs.settings.close(); return openProfileEdit(); }
   if (action === "open-settings") { if (!requireAuthenticated()) return; $("#themeLabel").textContent = state.theme === "dark" ? "다크" : "라이트"; return dialogs.settings.showModal(); }
   if (action === "close-settings") return dialogs.settings.close();
@@ -790,19 +855,20 @@ async function searchSchools(query) {
   try {
     const response = await fetch(`https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=1000&SCHUL_NM=${encodeURIComponent(query.trim())}`);
     const rows = (await response.json()).schoolInfo?.[1]?.row || [];
-    names.push(...rows.filter((row) => ["중학교", "고등학교"].includes(row.SCHUL_KND_SC_NM) && row.SCHUL_NM.replace(/\s+/g, "").toLowerCase().includes(q)).map((row) => row.SCHUL_NM));
+    names.push(...rows.filter((row) => OFFICIAL_SCHOOL_TYPES.includes(schoolTypeOf(row.SCHUL_KND_SC_NM)) && row.SCHUL_NM.replace(/\s+/g, "").toLowerCase().includes(q)).map((row) => row.SCHUL_NM));
   } catch {}
   names = [...new Set(names)].slice(0, 12); box.innerHTML = names.length ? names.map((name) => `<button type="button" class="suggestion" data-school="${name}">${name}</button>`).join("") : `<div class="suggestion">검색 결과가 없습니다.</div>`; box.classList.add("open");
 }
 $("#schoolSuggestions")?.addEventListener("click", (event) => { const button = event.target.closest("[data-school]"); if (!button) return; $("#schoolAutocomplete").value = button.dataset.school; $("#schoolSuggestions").classList.remove("open"); });
 
 function normalizeOfficialSchool(row) {
-  const lat = Number(row.latitude || row.LATITUDE); const lng = Number(row.longitude || row.LONGITUDE);
+  const lat = Number(row.latitude || row.LATITUDE || row.위도); const lng = Number(row.longitude || row.LONGITUDE || row.경도);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const name = row.schoolNm || row.SCHOOL_NM || row.학교명;
-  const type = row.schoolSe || row.SCHOOL_SE || row.학교급구분;
-  const address = row.rdnmadr || row.RDNMADR || row.lnmadr || row.LNMADR || "";
-  if (!name || !type || !/(초등학교|중학교|고등학교)/.test(type)) return null;
+  const name = row.schoolNm || row.SCHOOL_NM || row.SCHUL_NM || row.학교명;
+  const rawType = row.schoolSe || row.SCHOOL_SE || row.SCHUL_KND_SC_NM || row.학교급구분 || row.학교종류명 || name;
+  const type = schoolTypeOf(rawType);
+  const address = row.rdnmadr || row.RDNMADR || row.소재지도로명주소 || row.lnmadr || row.LNMADR || row.소재지지번주소 || row.ORG_RDNMA || "";
+  if (!name || !OFFICIAL_SCHOOL_TYPES.includes(type)) return null;
   return {
     id: `official-${row.schoolId || name}-${lat}-${lng}`.replace(/\s+/g, "-"),
     name,
@@ -819,7 +885,7 @@ function normalizeOfficialSchool(row) {
 }
 async function loadNationalSchools() {
   const key = runtimeConfig.schoolLocationServiceKey || "";
-  if (!key) return;
+  if (!key) { state.schoolDataStatus = "needs-key"; return; }
   state.schoolDataStatus = "loading";
   try {
     const base = runtimeConfig.schoolLocationApiUrl || "https://api.data.go.kr/openapi/tn_pubr_public_elesch_mskul_lc_api";
@@ -833,16 +899,17 @@ async function loadNationalSchools() {
       return (Array.isArray(item) ? item : [item]).map(normalizeOfficialSchool).filter(Boolean);
     };
     let schools = collect(first);
-    const pages = Math.min(8, Math.ceil(total / numOfRows));
+    const pages = Math.min(Number(runtimeConfig.schoolLocationMaxPages || 80), Math.ceil(total / numOfRows));
     for (let pageNo = 2; pageNo <= pages; pageNo++) {
       const json = await (await fetch(`${base}?serviceKey=${encodeURIComponent(key)}&pageNo=${pageNo}&numOfRows=${numOfRows}&type=json`)).json();
       schools.push(...collect(json));
     }
     if (schools.length) {
       const byId = new Map(state.schools.map((school) => [school.id, school]));
-      schools.forEach((school) => byId.set(school.id, { ...school, ...(byId.get(school.id) || {}) }));
+      schools.forEach((school) => byId.set(school.id, { ...(byId.get(school.id) || {}), ...school }));
       state.schools = [...byId.values()];
       state.schoolDataStatus = "official";
+      persist("schools", state.schools);
     } else state.schoolDataStatus = "sample";
   } catch (error) {
     console.warn("Failed to load national school locations", error);

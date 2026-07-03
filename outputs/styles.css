@@ -766,7 +766,7 @@ button:active .air-icon { transform: scale(.9); }
   position: absolute;
   top: 16px;
   bottom: 16px;
-  left: 16px;
+  right: 16px;
   z-index: 610;
   width: 344px;
   max-height: none;
@@ -810,9 +810,23 @@ button:active .air-icon { transform: scale(.9); }
 }
 .school-review small { display: block; margin-top: 3px; color: #9c958b; font-size: .68rem; line-height: 1.45; }
 .map-school-list {
+  position: absolute;
+  top: 84px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 605;
+  width: 318px;
+  overflow: auto;
   padding: 15px 10px 10px;
+  border: 1px solid rgba(245,239,228,.12);
   border-bottom: 1px solid rgba(245,239,228,.08);
+  border-radius: 16px;
+  background: rgba(15,15,13,.88);
+  box-shadow: 0 18px 48px rgba(0,0,0,.38), inset 0 1px rgba(255,255,255,.035);
+  backdrop-filter: blur(24px);
+  scrollbar-color: #3a3731 transparent;
 }
+.map-school-list.compact { width: 282px; }
 .map-list-head {
   display: flex;
   align-items: center;
@@ -875,6 +889,19 @@ button:active .air-icon { transform: scale(.9); }
   box-shadow: none;
 }
 .school-detail h1 { margin-bottom: 5px; font-size: 1.35rem; font-weight: 680; }
+.school-badge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(216,192,157,.18);
+  border-radius: 999px;
+  color: #d8c19f;
+  background: rgba(216,192,157,.07);
+  font-size: .62rem;
+  font-weight: 750;
+}
 .school-detail .muted { margin-bottom: 12px; color: #817a71; font-size: .72rem; }
 .school-member {
   padding: 5px 8px;
@@ -903,6 +930,50 @@ button:active .air-icon { transform: scale(.9); }
   transition: border-color .22s ease, background-color .22s ease;
 }
 .school-content-item:hover { border-color: rgba(216,192,157,.2); background: rgba(216,192,157,.045); }
+.school-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.school-stat-grid span {
+  display: grid;
+  gap: 3px;
+  padding: 11px 8px;
+  border: 1px solid rgba(245,239,228,.08);
+  border-radius: 10px;
+  background: rgba(245,239,228,.03);
+  text-align: center;
+}
+.school-stat-grid strong { color: #f3eadc; font-size: 1rem; }
+.school-stat-grid small { color: #8f887f; font-size: .62rem; }
+.school-highlight-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.school-contributors {
+  display: grid;
+  gap: 7px;
+  margin-top: 20px;
+}
+.school-contributors > strong { color: #8f887f; font-size: .65rem; font-weight: 650; text-transform: uppercase; }
+.contributor-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid rgba(245,239,228,.07);
+  border-radius: 10px;
+  color: #e9e1d5;
+  background: rgba(245,239,228,.025);
+  text-align: left;
+  transition: background-color .22s ease, border-color .22s ease, transform .22s ease;
+}
+.contributor-chip:hover { border-color: rgba(216,192,157,.2); background: rgba(216,192,157,.045); transform: translateY(-1px); }
+.contributor-chip small { display: block; margin-top: 3px; color: #8f887f; font-size: .62rem; }
 .cluster-pin {
   border-color: rgba(216,192,157,.55);
   background: rgba(17,17,15,.92);
@@ -926,6 +997,48 @@ button:active .air-icon { transform: scale(.9); }
 }
 .school-pin::after { width: 7px; height: 7px; background: #d8c19f; }
 .school-pin:hover { background: #2b261f; box-shadow: 0 12px 28px rgba(0,0,0,.5), 0 0 0 8px rgba(216,192,157,.16); transform: translateY(-2px) scale(1.08); }
+.school-home-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 28px;
+  background: linear-gradient(135deg, rgba(245,239,228,.08), rgba(216,192,157,.035)), var(--surface);
+}
+.school-home-hero h1 {
+  margin: 0 0 6px;
+  font-size: clamp(2rem, 5vw, 4.2rem);
+  line-height: .95;
+  letter-spacing: -.04em;
+}
+.school-home-hero p { margin: 0; color: var(--muted); }
+.school-home-actions { display: flex; align-items: center; gap: 10px; }
+.school-home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
+  margin: 14px 0;
+}
+.school-mini-hub .tag-row { margin-top: 14px; }
+.school-ranking { display: grid; gap: 8px; }
+.rank-row {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--surface-2);
+  text-align: left;
+  transition: transform .22s ease, border-color .22s ease, background-color .22s ease;
+}
+.rank-row:hover { transform: translateY(-1px); border-color: rgba(216,192,157,.28); background: var(--surface-3); }
+.rank-row > strong { color: #d8c19f; text-align: center; }
+.rank-row small { display: block; margin-top: 3px; color: var(--muted); font-size: .68rem; }
 .leaflet-tooltip {
   padding: 6px 8px;
   border: 1px solid rgba(245,239,228,.12);
@@ -939,6 +1052,8 @@ button:active .air-icon { transform: scale(.9); }
 .leaflet-tooltip-top::before { border-top-color: rgba(17,17,15,.9); }
 
 @media (max-width: 900px) {
+  .school-home-hero { align-items: stretch; flex-direction: column; padding: 20px; }
+  .school-home-grid { grid-template-columns: 1fr; }
   .map-command { left: 14px; right: 14px; top: 12px; display: grid; grid-template-columns: 1fr auto; gap: 7px; }
   .map-search { width: 100%; min-height: 48px; }
   .map-filters { min-height: 42px; grid-column: 1 / -1; }
@@ -956,6 +1071,15 @@ button:active .air-icon { transform: scale(.9); }
   }
   .school-preview > .panel { padding: 16px; }
   .school-detail .wiki-panel { margin-top: 14px; }
+  .map-school-list {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-height: 32dvh;
+  }
+  .map-school-list.compact { display: none; }
 }
 
 @media (max-width: 620px) {
@@ -963,6 +1087,7 @@ button:active .air-icon { transform: scale(.9); }
   .map-layout,
   #realMap { min-height: calc(100dvh - 72px); }
   .school-detail { max-height: 40dvh; }
+  .map-school-list { bottom: 82px; max-height: 26dvh; }
   .school-detail .wiki-section:nth-of-type(n+3) { display: none; }
   .school-content { display: none; }
   .leaflet-control-attribution { margin-bottom: calc(40dvh + 18px) !important; }
