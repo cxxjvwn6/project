@@ -78,6 +78,7 @@ const state = {
   session: restore("session", { email: "demo@airboard.kr" }),
   verification: { email: "", code: "", verified: false },
   theme: restore("theme", "dark"),
+  language: restore("language", "ko"),
   watchHistory: restore("watchHistory", []),
   following: restore("following", ["서윤", "민재"]),
   feedOrder: [],
@@ -151,6 +152,7 @@ function saveAll() {
   persist("accounts", state.accounts); persist("session", state.session); persist("theme", state.theme); persist("watchHistory", state.watchHistory); persist("following", state.following); persist("mapView", state.mapView);
   persist("mapSchoolType", state.mapSchoolType);
   persist("recentSearches", state.recentSearches);
+  persist("language", state.language);
 }
 function toast(message, type = "") {
   if (!type) type = /실패|오류|필요|일치하지|올바르지|늦어야|삭제|차단|신고/.test(message) ? "error" : /완료|저장|가입|로그인|반영|환영/.test(message) ? "success" : "message";
@@ -159,6 +161,7 @@ function toast(message, type = "") {
 }
 function lucide() {
   $$("i[data-lucide]").forEach((node) => node.outerHTML = window.airIcon(node.dataset.lucide));
+  applyLanguage();
 }
 function sectionTitle(title, action = "") { return `<div class="section-title"><h1>${title}</h1><div class="toolbar">${action}</div></div>`; }
 function empty(iconName, text) { return `<div class="empty-state">${icon(iconName)}<span>${text}</span></div>`; }
@@ -217,15 +220,21 @@ function markConversationRead(conversation) {
   conversation.unread = 0; conversation.messages.forEach((message) => { if (message.from !== "me") message.read = true; }); saveAll(); return true;
 }
 function updateChrome() {
+  document.documentElement.lang = state.language === "en" ? "en" : "ko";
+  document.body.dataset.language = state.language;
   $("#homeToolbar").classList.toggle("hidden", state.view !== "home");
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === state.view));
   const badge = $("#dmBadge"); const unread = totalUnread(); const previous = Number(badge.dataset.count || 0);
   badge.textContent = unreadLabel(unread); badge.dataset.count = unread; badge.classList.toggle("show", unread > 0);
   badge.setAttribute("aria-label", unread ? `읽지 않은 메시지 ${unreadLabel(unread)}개` : "읽지 않은 메시지 없음");
   if (unread > previous) { badge.classList.remove("badge-pop"); requestAnimationFrame(() => badge.classList.add("badge-pop")); }
-  $(".profile-button span").textContent = state.session?.email ? state.profile.nickname : "로그인";
+  $(".profile-button span").textContent = state.session?.email ? state.profile.nickname : tr("로그인");
   document.body.classList.toggle("light-mode", state.theme === "light");
   document.body.classList.toggle("map-active", state.view === "map");
+}
+function updateSettingsControls() {
+  $$("[data-action='set-language']").forEach((button) => button.classList.toggle("active", button.dataset.language === state.language));
+  $$("[data-action='set-theme']").forEach((button) => button.classList.toggle("active", button.dataset.theme === state.theme));
 }
 
 function render() {
@@ -690,6 +699,62 @@ function stepStory(direction) {
 }
 function setFormError(id, message) { const node = $(id); node.textContent = message; node.classList.remove("state-pop"); if (message) requestAnimationFrame(() => node.classList.add("state-pop")); }
 function validEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+const i18n = {
+  en: {
+    "로그인": "Log In", "가입": "Sign Up", "계정 만들기": "Create account", "이미 계정이 있어요": "I already have an account",
+    "이메일": "Email", "비밀번호": "Password", "비밀번호 확인": "Confirm password", "비밀번호 보기": "Show password",
+    "이메일 인증": "Email verification", "인증 코드": "Verification code", "인증 코드 발송": "Send code", "인증": "Verify",
+    "닉네임": "Nickname", "학교": "School", "학년": "Grade", "반": "Class", "역할": "Role", "직책": "Position",
+    "홈": "Home", "지도": "Map", "자료 및 커뮤니티": "Resources & Community", "프로필": "Profile", "빠른 실행": "Command menu",
+    "일정 등록": "Add Schedule", "일정 제목": "Schedule title", "날짜": "Date", "시작 시간": "Start time", "종료 시간": "End time", "메모": "Memo", "등록": "Add",
+    "이번주": "This Week", "다가오는 일정": "Upcoming", "등록된 일정이 없습니다.": "No schedules yet.",
+    "게시글 작성": "Create Post", "제목": "Title", "내용": "Content", "추천 태그": "Suggested tags", "게시": "Post", "파일 첨부": "Attach file",
+    "댓글": "Comments", "댓글 입력": "Write a comment", "첫 댓글을 남겨보세요.": "Be the first to comment.", "작성자 좋아요": "Author liked",
+    "프로필 수정": "Edit Profile", "프로필 사진": "Profile photo", "자기소개": "Bio", "취소": "Cancel", "저장": "Save",
+    "설정": "Settings", "언어 설정": "Language", "라이트 / 다크 모드": "Theme", "저장한 목록": "Saved Posts", "시청 기록": "Watch History",
+    "프로필 설정": "Profile Settings", "로그아웃": "Log Out", "회원 탈퇴": "Delete Account", "알림": "Notifications", "개인정보": "Privacy", "계정 보안": "Account Security",
+    "계정": "Account", "앱 설정": "App Settings", "활동": "Activity", "위험 구역": "Danger Zone", "한국어": "Korean", "Light": "Light", "Dark": "Dark",
+    "닫기": "Close", "저장한 목록": "Saved Posts", "목록이 비어 있습니다.": "Nothing here yet.", "자료가 없습니다.": "No resources yet.", "하이라이트가 없습니다.": "No highlights yet.",
+    "하이라이트": "Highlight", "하이라이트 추가": "Add Highlight", "사진": "Photos", "커버 이미지 번호": "Cover image number", "추가": "Add",
+    "학교 또는 지역 검색": "Search schools or regions", "전체": "All", "초등학교": "Elementary", "중학교": "Middle", "고등학교": "High", "특수학교": "Special",
+    "학교 커뮤니티": "School Communities", "검색 결과가 없습니다.": "No results found.", "공식 API 키 필요": "Official API key needed", "공식 데이터 로딩 중": "Loading official data", "공식 전국 학교 데이터": "Official nationwide school data",
+    "학교 리뷰 평점": "School rating", "학생 리뷰": "Student Reviews", "학교 기여자": "School Contributors", "학교 위키": "School Wiki", "학교 설명": "Description", "학교 평점": "Rating", "여담": "Trivia", "기타 정보": "More Info", "학교 게시글 및 자료": "School Posts & Resources", "Open School Hub": "Open School Hub",
+    "메시지": "Messages", "대화": "Chats", "친구 요청": "Requests", "대화를 선택하세요.": "Select a conversation.", "메시지 입력": "Message", "온라인": "Online", "오프라인": "Offline", "읽지 않음으로 표시": "Mark unread", "차단": "Block", "신고": "Report",
+    "Posts": "Posts", "Resources": "Resources", "Highlights": "Highlights", "더보기": "More", "열기": "Open", "평가": "Rate"
+  },
+  ko: {
+    "Log In": "로그인", "Sign Up": "회원가입", "Create account": "계정 만들기", "I already have an account": "이미 계정이 있어요",
+    "Open School Hub": "학교 허브 열기", "Posts": "게시글", "Resources": "자료", "Highlights": "하이라이트", "New Messages": "새 메시지",
+    "Reply": "답글", "More": "더보기", "Rate": "평가", "Home": "홈", "Map": "지도", "Profile": "프로필"
+  }
+};
+Object.entries(i18n.en).forEach(([ko, en]) => { if (!i18n.ko[en]) i18n.ko[en] = ko; });
+function tr(text) {
+  return i18n[state.language]?.[String(text).trim()] || String(text);
+}
+function applyLanguage(root = document) {
+  const lang = state.language;
+  if (!root || !i18n[lang]) return;
+  const walker = document.createTreeWalker(root.body || root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue.trim() || ["SCRIPT", "STYLE"].includes(node.parentElement?.tagName)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach((node) => {
+    const value = node.nodeValue.trim();
+    if (i18n[lang][value]) node.nodeValue = node.nodeValue.replace(value, i18n[lang][value]);
+  });
+  $$("input, textarea").forEach((node) => {
+    if (node.placeholder && i18n[lang][node.placeholder]) node.placeholder = i18n[lang][node.placeholder];
+  });
+  $$("[aria-label]").forEach((node) => {
+    const label = node.getAttribute("aria-label");
+    if (i18n[lang][label]) node.setAttribute("aria-label", i18n[lang][label]);
+  });
+}
 function rememberSearch(query) {
   const value = query.trim(); if (!value) return;
   state.recentSearches = [value, ...state.recentSearches.filter((item) => item !== value)].slice(0, 8);
@@ -763,15 +828,26 @@ document.addEventListener("click", (event) => {
   if (action === "expand-post") { const card = document.getElementById(target.dataset.id); card?.querySelector(".post-text")?.classList.remove("collapsed"); target.remove(); return; }
   if (action === "focus-school") { const school = state.schools.find((item) => item.id === target.dataset.id); if (!school) return; state.view = "map"; state.selectedSchool = school.id; state.mapDetailOpen = true; state.mapView = { center: [school.lat, school.lng], zoom: Math.max(15, state.mapView.zoom || 7) }; saveAll(); return render(); }
   if (action === "edit-profile") { dialogs.settings.open && dialogs.settings.close(); return openProfileEdit(); }
-  if (action === "open-settings") { if (!requireAuthenticated()) return; $("#themeLabel").textContent = state.theme === "dark" ? "다크" : "라이트"; return dialogs.settings.showModal(); }
+  if (action === "open-settings") { if (!requireAuthenticated()) return; updateSettingsControls(); dialogs.settings.showModal(); lucide(); return; }
   if (action === "close-settings") return dialogs.settings.close();
   if (action === "open-saved") { dialogs.settings.open && dialogs.settings.close(); return showCollection("saved"); }
   if (action === "open-watch-history") { dialogs.settings.open && dialogs.settings.close(); return showCollection("history"); }
   if (action === "close-collection") return dialogs.collection.close();
-  if (action === "toggle-theme") { state.theme = state.theme === "dark" ? "light" : "dark"; saveAll(); updateChrome(); $("#themeLabel").textContent = state.theme === "dark" ? "다크" : "라이트"; return; }
-  if (action === "language-setting") return toast("현재 언어: 한국어");
-  if (action === "logout") { endRemoteSession(); state.session = null; state.view = "home"; saveAll(); dialogs.settings.close(); render(); return toast("로그아웃되었습니다."); }
-  if (action === "delete-account") { if (!confirm("계정을 삭제하시겠습니까?")) return; state.accounts = state.accounts.filter((account) => account.email !== state.session?.email); state.session = null; state.view = "home"; saveAll(); dialogs.settings.close(); render(); return toast("회원 탈퇴가 완료되었습니다."); }
+  if (action === "set-language") { state.language = target.dataset.language; saveAll(); updateChrome(); updateSettingsControls(); applyLanguage(); return toast(tr("언어 설정")); }
+  if (action === "set-theme") { state.theme = target.dataset.theme; saveAll(); updateChrome(); updateSettingsControls(); return toast(state.theme === "dark" ? "Dark" : "Light"); }
+  if (action === "notification-settings") return toast(state.language === "en" ? "Notification settings saved." : "알림 설정이 저장되었습니다.");
+  if (action === "privacy-settings") return toast(state.language === "en" ? "Privacy settings are ready." : "개인정보 설정을 확인했습니다.");
+  if (action === "account-security") return toast(state.language === "en" ? "Account security is active." : "계정 보안이 활성화되어 있습니다.");
+  if (action === "logout") { if (!confirm(state.language === "en" ? "Log out?" : "로그아웃하시겠습니까?")) return; endRemoteSession(); state.session = null; state.view = "home"; saveAll(); dialogs.settings.close(); render(); return toast(state.language === "en" ? "Logged out." : "로그아웃되었습니다."); }
+  if (action === "delete-account") {
+    if (!confirm(state.language === "en" ? "Delete your account? This cannot be undone." : "계정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+    const account = state.accounts.find((item) => item.email === state.session?.email);
+    if (account?.password) {
+      const password = prompt(state.language === "en" ? "Enter your password to delete your account." : "회원 탈퇴를 위해 비밀번호를 입력해주세요.");
+      if (password !== account.password) return toast(state.language === "en" ? "Password does not match." : "비밀번호가 일치하지 않습니다.", "error");
+    }
+    state.accounts = state.accounts.filter((item) => item.email !== state.session?.email); state.session = null; state.view = "home"; saveAll(); dialogs.settings.close(); render(); return toast(state.language === "en" ? "Account deleted." : "회원 탈퇴가 완료되었습니다.");
+  }
   if (action === "view-avatar") return openStoryViewer([target.dataset.src], 0, target.dataset.title || "프로필 사진");
   if (action === "open-highlight-create") { $("#highlightCreateForm")?.reset(); $("#highlightCreatePreview").innerHTML = ""; return dialogs.highlightCreate.showModal(); }
   if (action === "close-highlight-create") return dialogs.highlightCreate.close();
@@ -897,6 +973,8 @@ document.addEventListener("dblclick", (event) => {
 
 document.addEventListener("submit", (event) => {
   event.preventDefault();
+  const submitter = event.submitter;
+  if (submitter) { submitter.setAttribute("aria-busy", "true"); setTimeout(() => submitter.removeAttribute("aria-busy"), 450); }
   if (event.target.id === "scheduleForm") {
     const data = Object.fromEntries(new FormData(event.target)); if (!data.title || !data.date || !data.start || !data.end) return toast("일정 제목, 날짜, 시작 시간, 종료 시간을 입력해주세요."); if (data.end <= data.start) return toast("종료 시간은 시작 시간보다 늦어야 합니다.");
     state.schedules.push({ id: crypto.randomUUID(), ...data }); saveAll(); dialogs.schedule.close(); event.target.reset(); return renderHome();

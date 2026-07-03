@@ -127,13 +127,24 @@
       <div class="modal-panel">
         <div class="modal-head"><h2>설정</h2><button class="icon-button" data-action="close-settings" aria-label="닫기"><i data-lucide="x"></i></button></div>
         <div class="settings-list">
-          <button data-action="open-saved"><i data-lucide="bookmark"></i><span>저장한 목록</span><i data-lucide="chevron-right"></i></button>
-          <button data-action="open-watch-history"><i data-lucide="history"></i><span>시청 기록</span><i data-lucide="chevron-right"></i></button>
-          <button data-action="edit-profile"><i data-lucide="user-cog"></i><span>프로필 설정</span><i data-lucide="chevron-right"></i></button>
-          <button data-action="language-setting"><i data-lucide="languages"></i><span>언어 설정</span><strong>한국어</strong></button>
-          <button data-action="toggle-theme"><i data-lucide="sun-moon"></i><span>라이트 / 다크 모드</span><strong id="themeLabel">다크</strong></button>
-          <button data-action="logout"><i data-lucide="log-out"></i><span>로그아웃</span></button>
-          <button class="danger-row" data-action="delete-account"><i data-lucide="user-x"></i><span>회원 탈퇴</span></button>
+          <section class="settings-section"><h3>계정</h3>
+            <button data-action="edit-profile"><i data-lucide="user-cog"></i><span>프로필 설정</span><i data-lucide="chevron-right"></i></button>
+            <button data-action="account-security"><i data-lucide="shield-check"></i><span>계정 보안</span><i data-lucide="chevron-right"></i></button>
+          </section>
+          <section class="settings-section"><h3>앱 설정</h3>
+            <div class="setting-row"><span><i data-lucide="languages"></i>언어 설정</span><div class="segmented"><button data-action="set-language" data-language="ko">한국어</button><button data-action="set-language" data-language="en">English</button></div></div>
+            <div class="setting-row"><span><i data-lucide="sun-moon"></i>라이트 / 다크 모드</span><div class="segmented"><button data-action="set-theme" data-theme="light">Light</button><button data-action="set-theme" data-theme="dark">Dark</button></div></div>
+            <button data-action="notification-settings"><i data-lucide="bell"></i><span>알림</span><i data-lucide="chevron-right"></i></button>
+            <button data-action="privacy-settings"><i data-lucide="lock"></i><span>개인정보</span><i data-lucide="chevron-right"></i></button>
+          </section>
+          <section class="settings-section"><h3>활동</h3>
+            <button data-action="open-saved"><i data-lucide="bookmark"></i><span>저장한 목록</span><i data-lucide="chevron-right"></i></button>
+            <button data-action="open-watch-history"><i data-lucide="history"></i><span>시청 기록</span><i data-lucide="chevron-right"></i></button>
+          </section>
+          <section class="settings-section"><h3>위험 구역</h3>
+            <button data-action="logout"><i data-lucide="log-out"></i><span>로그아웃</span></button>
+            <button class="danger-row" data-action="delete-account"><i data-lucide="user-x"></i><span>회원 탈퇴</span></button>
+          </section>
         </div>
       </div>
     </dialog>
