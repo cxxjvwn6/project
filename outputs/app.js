@@ -85,6 +85,9 @@ const state = {
   justUploaded: null,
   viewedProfile: null,
   activeHighlight: { group: 0, image: 0 },
+  activeViewer: { images: [], index: 0, title: "", scale: 1 },
+  recentSearches: restore("recentSearches", []),
+  feedSchool: "",
   schedules: restore("schedules", [
     { id: "s1", title: "영어 수행평가 초안", date: iso(today), start: "18:30", end: "19:20", memo: "발표 구조 정리" },
     { id: "s2", title: "수학 시험 대비", date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 3)), start: "15:00", end: "17:00", memo: "오답 20문제" },
@@ -139,7 +142,7 @@ const dialogs = {
   schedule: $("#scheduleDialog"), login: $("#loginDialog"), signup: $("#signupDialog"), upload: $("#uploadDialog"),
   comments: $("#commentsDialog"), profileEdit: $("#profileEditDialog"), settings: $("#settingsDialog"), collection: $("#collectionDialog"),
   wikiEdit: $("#wikiEditDialog"), history: $("#historyDialog"), revision: $("#revisionDialog"), highlight: $("#highlightDialog"),
-  command: $("#commandDialog")
+  highlightCreate: $("#highlightCreateDialog"), command: $("#commandDialog")
 };
 
 function saveAll() {
@@ -147,6 +150,7 @@ function saveAll() {
   persist("posts", state.posts); persist("conversations", state.conversations); persist("requests", state.requests);
   persist("accounts", state.accounts); persist("session", state.session); persist("theme", state.theme); persist("watchHistory", state.watchHistory); persist("following", state.following); persist("mapView", state.mapView);
   persist("mapSchoolType", state.mapSchoolType);
+  persist("recentSearches", state.recentSearches);
 }
 function toast(message, type = "") {
   if (!type) type = /실패|오류|필요|일치하지|올바르지|늦어야|삭제|차단|신고/.test(message) ? "error" : /완료|저장|가입|로그인|반영|환영/.test(message) ? "success" : "message";
@@ -371,7 +375,7 @@ function renderMap() {
       <div class="map-filters">${SCHOOL_TYPES.map((type) => `<button type="button" class="map-filter ${state.mapSchoolType === type ? "active" : ""}" data-action="map-school-filter" data-type="${type}">${type}</button>`).join("")}</div>
       <span class="map-result-count">${dataStatus} · 표시 중 ${schools.length}개</span>
     </div>
-    <aside class="map-school-list ${school ? "compact" : ""}"><div class="map-list-head"><strong>학교 커뮤니티</strong><span>${schools.length}개</span></div>${listSchools.length ? listSchools.map((item) => `<button class="map-school-row ${item.id === state.selectedSchool ? "selected" : ""}" data-action="select-map-school" data-id="${item.id}"><span class="school-row-dot"></span><span><strong>${item.name}</strong><small>${item.location || item.address}</small></span>${icon("chevron-right")}</button>`).join("") : empty("search-x", "검색 결과가 없습니다.")}</aside>
+    <aside class="map-school-list ${school ? "compact" : ""}"><div class="map-list-head"><strong>학교 커뮤니티</strong><span>${schools.length}개</span></div>${listSchools.length ? listSchools.map((item) => `<button class="map-school-row ${item.id === state.selectedSchool ? "selected" : ""}" data-action="select-map-school" data-id="${item.id}"><span class="school-row-dot"></span><span><strong>${item.name}</strong><small>${item.location || item.address} · ${item.members || 0}명</small></span>${icon("chevron-right")}</button>`).join("") : empty("search-x", "검색 결과가 없습니다.")}</aside>
     ${school ? `<aside class="school-detail"><div class="school-preview">${schoolDetailMarkup(school, schoolPosts)}</div></aside>` : ""}
   </section>`;
   setTimeout(initMap, 0);
@@ -383,6 +387,7 @@ function schoolDetailMarkup(school, posts) {
     <div class="school-review-summary"><strong>${school.rating.toFixed(1)}</strong><span>학교 리뷰 평점</span><small>${posts.length}개의 학교 활동 리뷰</small></div>
     <div class="school-stat-grid"><span><strong>${posts.length}</strong><small>게시글</small></span><span><strong>${stats.resources.length}</strong><small>자료</small></span><span><strong>${stats.activeStudents.length}</strong><small>활동 학생</small></span></div>
     <div class="school-highlight-strip">${(stats.trending.length ? stats.trending : ["#학교소식", "#자료공유", "#수행평가"]).map((tag) => `<span class="tag">${tag}</span>`).join("")}</div>
+    <button class="primary wide school-hub-button" data-action="open-school-hub">${icon("door-open")}Open School Hub</button>
     <div class="school-reviews"><strong>학생 리뷰</strong>${posts.length ? posts.slice(0, 3).map((post) => `<button class="school-review" data-action="open-post" data-id="${post.id}"><span class="avatar">${post.author.slice(0, 1)}</span><span><strong>${post.author}</strong><small>${post.body}</small></span></button>`).join("") : empty("message-circle", "아직 등록된 리뷰가 없습니다.")}</div>
     <div class="school-contributors"><strong>학교 기여자</strong>${stats.contributors.length ? stats.contributors.map((item) => `<button class="contributor-chip" data-action="view-author" data-author="${item.author}"><span class="avatar">${item.author.slice(0, 1)}</span><span>${item.author}<small>${item.count}개 활동 · 평판 ${item.score.toFixed(1)}</small></span></button>`).join("") : empty("users", "아직 활동 기여자가 없습니다.")}</div>
     <div class="wiki-panel"><div class="wiki-actions"><strong>학교 위키</strong><div class="toolbar"><button class="tiny" data-action="edit-wiki">${icon("pencil")}수정</button><button class="tiny" data-action="wiki-history">${icon("history")}기록</button></div></div>
@@ -475,29 +480,36 @@ function renderFeed() {
     const searchable = `${post.title} ${post.body} ${post.tags.join(" ")} ${post.author} ${post.school}`.toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     const matchesTags = !state.feedTags.length || state.feedTags.some((tag) => post.tags.includes(tag));
-    return matchesQuery && matchesTags;
+    const matchesSchool = !state.feedSchool || post.school === state.feedSchool;
+    return matchesQuery && matchesTags && matchesSchool;
   });
   const posts = allPosts.slice(0, state.feedLimit);
+  const suggestions = [...new Set([
+    ...state.recentSearches,
+    ...state.posts.flatMap((post) => [post.school, post.author, ...(post.tags || [])])
+  ])].filter((item) => item && (!query || item.toLowerCase().includes(query))).slice(0, 8);
   $("#app").innerHTML = `
-    <div class="feed-search">${icon("search")}<input id="feedSearch" value="${state.feedQuery}" placeholder="검색" /><button class="icon-button" data-action="open-saved" aria-label="저장한 목록">${icon("bookmark")}</button><button class="icon-button" data-action="open-watch-history" aria-label="시청 기록">${icon("history")}</button><button class="primary icon-primary" data-action="open-upload" aria-label="작성">${icon("plus")}</button></div>
+    <div class="feed-search-wrap"><div class="feed-search">${icon("search")}<input id="feedSearch" value="${state.feedQuery}" placeholder="검색" autocomplete="off" /><button class="icon-button" data-action="open-saved" aria-label="저장한 목록">${icon("bookmark")}</button><button class="icon-button" data-action="open-watch-history" aria-label="시청 기록">${icon("history")}</button><button class="primary icon-primary" data-action="open-upload" aria-label="작성">${icon("plus")}</button></div>${suggestions.length ? `<div class="search-suggestions">${suggestions.map((item) => `<button data-action="search-suggestion" data-query="${item}">${icon(item.startsWith("#") ? "hash" : "clock")}<span>${item}</span></button>`).join("")}</div>` : ""}</div>
+    ${state.feedSchool ? `<div class="active-school-filter"><span>${state.feedSchool} AirBoard</span><button class="icon-button" data-action="clear-school-feed" aria-label="학교 필터 해제">${icon("x")}</button></div>` : ""}
     <div class="tag-row feed-tags">${["#중간고사", "#9모", "#수행평가", "#기말고사", "#필기", "#탐구"].map((tag) => `<button class="tag ${state.feedTags.includes(tag) ? "active" : ""}" data-action="filter-tag" data-tag="${tag}" aria-pressed="${state.feedTags.includes(tag)}">${tag}</button>`).join("")}${state.feedTags.length ? `<button class="tag tag-clear" data-action="clear-tags" aria-label="추천 태그 선택 해제">${icon("x")}</button>` : ""}</div>
     <section class="feed-layout"><div class="post-list">${posts.length ? posts.map(postMarkup).join("") : empty("search-x", "검색 결과가 없습니다.")}${allPosts.length > posts.length ? `<button class="tiny wide" data-action="more-feed">${icon("chevron-down")}</button>` : ""}</div></section>`;
 }
 function postMarkup(post) {
   const own = post.author === state.profile.nickname; const following = state.following.includes(post.author);
+  const long = (post.body || "").length > 120;
   return `<article class="post-card" id="${post.id}">
     <div class="post-body post-header"><div class="author-line"><button class="author-button" data-action="view-author" data-author="${post.author}"><span class="avatar">${post.author.slice(0, 1)}</span><span><strong>${post.author}</strong><br><small>${post.school} · ${timeAgo(post.createdAt)}</small></span></button>${!own ? `<button class="tiny follow-icon ${following ? "active" : ""}" data-action="toggle-follow" data-author="${post.author}" aria-label="${following ? "팔로우 취소" : "팔로우"}">${icon(following ? "user-check" : "user-plus")}</button>` : ""}</div></div>
     ${mediaMarkup(post)}
-    <div class="post-body"><div class="post-actions"><button class="tiny ${post.liked ? "liked" : ""}" data-action="like-post" data-id="${post.id}" aria-label="좋아요">${icon("heart")}<span>${post.likes}</span></button><button class="tiny" data-action="open-comments" data-id="${post.id}" aria-label="댓글">${icon("message-circle")}<span>${commentCount(post)}</span></button><button class="tiny" data-action="download-post" data-id="${post.id}" aria-label="다운로드">${icon("download")}</button><button class="tiny" data-action="save-post" data-id="${post.id}" aria-label="저장">${icon(post.saved ? "bookmark-check" : "bookmark")}</button>${!own ? `<label class="score-control"><select data-action="rate-post" data-id="${post.id}" aria-label="자료 평가"><option value="">평가</option>${Array.from({ length: 10 }, (_, i) => 10 - i).map((score) => `<option>${score}</option>`).join("")}</select><strong>${avg(post.ratingScores).toFixed(1)}</strong></label>` : ""}</div><h3>${post.title}</h3><p>${post.body}</p><div class="tag-row">${post.tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}</div><div class="comments-preview">${post.comments[0] ? `<strong>${post.comments[0].author}</strong> ${post.comments[0].body}` : ""}</div></div>
+    <div class="post-body"><div class="post-actions"><button class="tiny ${post.liked ? "liked" : ""}" data-action="like-post" data-id="${post.id}" aria-label="좋아요">${icon("heart")}<span>${post.likes}</span></button><button class="tiny" data-action="open-comments" data-id="${post.id}" aria-label="댓글">${icon("message-circle")}<span>${commentCount(post)}</span></button><button class="tiny" data-action="download-post" data-id="${post.id}" aria-label="다운로드">${icon("download")}</button><button class="tiny" data-action="save-post" data-id="${post.id}" aria-label="저장">${icon(post.saved ? "bookmark-check" : "bookmark")}</button>${!own ? `<label class="score-control"><select data-action="rate-post" data-id="${post.id}" aria-label="자료 평가"><option value="">평가</option>${Array.from({ length: 10 }, (_, i) => 10 - i).map((score) => `<option>${score}</option>`).join("")}</select><strong>${avg(post.ratingScores).toFixed(1)}</strong></label>` : ""}</div><h3>${post.title}</h3><p class="post-text ${long ? "collapsed" : ""}">${post.body}</p>${long ? `<button class="text-button more-text" data-action="expand-post" data-id="${post.id}">더보기</button>` : ""}<div class="tag-row">${post.tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}</div><div class="comments-preview">${post.comments[0] ? `<strong>${post.comments[0].author}</strong> ${post.comments[0].body}` : ""}</div></div>
   </article>`;
 }
 function mediaMarkup(post) {
   if (!post.media.length) return "";
-  return `<div class="media-carousel" data-carousel="${post.id}" data-index="0" data-action="watch-post" data-id="${post.id}"><div class="media-track">${post.media.map((media) => `<div class="media-slide">${media.type === "image" ? `<img loading="lazy" src="${media.url}" alt="${media.name}" />` : media.type === "video" ? `<video controls preload="metadata" src="${media.url}"></video>` : `<div class="file-slide">${icon("file-text")}<h3>${media.name}</h3><a class="primary" href="${media.url}" download target="_blank">열기</a></div>`}</div>`).join("")}</div>${post.media.length > 1 ? `<div class="media-controls"><button class="icon-button" data-action="media-prev" data-id="${post.id}" aria-label="이전 미디어">${icon("chevron-left")}</button><button class="icon-button" data-action="media-next" data-id="${post.id}" aria-label="다음 미디어">${icon("chevron-right")}</button></div>` : ""}</div>`;
+  return `<div class="media-carousel" data-carousel="${post.id}" data-index="0" data-action="watch-post" data-id="${post.id}"><div class="media-track">${post.media.map((media, index) => `<div class="media-slide">${media.type === "image" ? `<img loading="lazy" src="${media.url}" alt="${media.name}" data-action="open-media-viewer" data-id="${post.id}" data-index="${index}" />` : media.type === "video" ? `<video controls preload="metadata" src="${media.url}"></video>` : `<div class="file-slide">${icon("file-text")}<h3>${media.name}</h3><a class="primary" href="${media.url}" download target="_blank">열기</a></div>`}</div>`).join("")}</div>${post.media.length > 1 ? `<div class="media-controls"><button class="icon-button" data-action="media-prev" data-id="${post.id}" aria-label="이전 미디어">${icon("chevron-left")}</button><button class="icon-button" data-action="media-next" data-id="${post.id}" aria-label="다음 미디어">${icon("chevron-right")}</button></div><div class="media-dots">${post.media.map((_, index) => `<span class="${index === 0 ? "active" : ""}"></span>`).join("")}</div>` : ""}</div>`;
 }
 function commentCount(post) { return post.comments.reduce((sum, comment) => sum + 1 + comment.replies.length, 0); }
 function moveCarousel(id, direction) {
-  const carousel = $(`[data-carousel="${id}"]`); if (!carousel) return; const post = state.posts.find((item) => item.id === id); let index = Number(carousel.dataset.index) + direction; index = (index + post.media.length) % post.media.length; carousel.dataset.index = index; $(".media-track", carousel).style.transform = `translateX(-${index * 100}%)`;
+  const carousel = $(`[data-carousel="${id}"]`); if (!carousel) return; const post = state.posts.find((item) => item.id === id); let index = Number(carousel.dataset.index) + direction; index = (index + post.media.length) % post.media.length; carousel.dataset.index = index; $(".media-track", carousel).style.transform = `translateX(-${index * 100}%)`; $$(".media-dots span", carousel).forEach((dot, i) => dot.classList.toggle("active", i === index));
 }
 function refreshPostCard(id) {
   const post = state.posts.find((item) => item.id === id); const card = document.getElementById(id);
@@ -512,18 +524,22 @@ function showCollection(type) {
 
 function renderComments() {
   const post = state.posts.find((item) => item.id === state.activePost);
-  $("#commentsList").innerHTML = post.comments.length ? post.comments.map((comment) => `<div class="comment"><div class="comment-head"><strong>${comment.author}</strong>${comment.authorLiked ? `<span class="author-liked">작성자 좋아요</span>` : ""}</div><p>${comment.body}</p><div class="toolbar"><button class="tiny" data-action="like-comment" data-comment="${comment.id}">${icon("heart")}${comment.likes}</button><button class="tiny" data-action="reply-comment" data-comment="${comment.id}" data-user="${comment.author}">답글</button></div>${comment.replies.map((reply) => `<div class="comment reply"><div class="comment-head"><strong>${reply.author}</strong>${reply.authorLiked ? `<span class="author-liked">작성자 좋아요</span>` : ""}</div><p>${reply.body}</p><div class="toolbar"><button class="tiny" data-action="like-reply" data-comment="${comment.id}" data-reply="${reply.id}">${icon("heart")}${reply.likes}</button><button class="tiny" data-action="reply-comment" data-comment="${comment.id}" data-user="${reply.author}">답글</button></div></div>`).join("")}</div>`).join("") : empty("message-circle", "첫 댓글을 남겨보세요.");
-  lucide();
+  const actions = (kind, item, commentId = "") => `<div class="comment-actions"><button class="${item.liked ? "liked" : ""}" data-action="${kind}" ${commentId ? `data-comment="${commentId}" data-reply="${item.id}"` : `data-comment="${item.id}"`}>${icon("heart")} ${item.likes}</button><button data-action="reply-comment" data-comment="${commentId || item.id}" data-user="${item.author}">Reply</button><time>${timeAgo(item.createdAt || Date.now())}</time></div>`;
+  $("#commentsList").innerHTML = post.comments.length ? post.comments.map((comment) => `<div class="comment"><div class="comment-head"><strong>${comment.author}</strong>${comment.authorLiked ? `<span class="author-liked">작성자 좋아요</span>` : ""}</div><p>${comment.body}</p>${actions("like-comment", comment)}${comment.replies.map((reply) => `<div class="comment reply"><div class="comment-head"><strong>${reply.author}</strong>${reply.authorLiked ? `<span class="author-liked">작성자 좋아요</span>` : ""}</div><p>${reply.body}</p>${actions("like-reply", reply, comment.id)}</div>`).join("")}</div>`).join("") : empty("message-circle", "첫 댓글을 남겨보세요.");
+  lucide(); requestAnimationFrame(() => { const list = $("#commentsList"); if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" }); });
 }
 
 function renderProfile(author = state.profile.nickname) {
   const own = author === state.profile.nickname; const uploaded = state.posts.filter((post) => post.author === author); const user = getUserProfile(author); state.viewedProfile = author;
   $("#app").innerHTML = `<section class="profile-page"><div class="profile-tools">${own ? `<button class="icon-button" data-action="open-settings" aria-label="설정">${icon("settings")}</button>` : `<div class="toolbar"><button class="icon-button follow-icon ${state.following.includes(author) ? "active" : ""}" data-action="toggle-follow" data-author="${author}" aria-label="팔로우">${icon(state.following.includes(author) ? "user-check" : "user-plus")}</button><button class="icon-button" data-action="dm-author" data-author="${author}" aria-label="메시지">${icon("send")}</button></div>`}</div>
-    <div class="profile-main">${user.avatar ? `<img class="avatar profile-avatar" src="${user.avatar}" alt="${author}" />` : `<span class="avatar profile-avatar">${author.slice(0, 1)}</span>`}<h1>${author}</h1><strong>${user.school} · ${user.grade} ${user.className}</strong><small>${user.role}${user.position ? ` · ${user.position}` : ""}</small>
+    <div class="profile-main">${user.avatar ? `<button class="avatar profile-avatar image-avatar" data-action="view-avatar" data-src="${user.avatar}" data-title="${author}"><img src="${user.avatar}" alt="${author}" /></button>` : `<span class="avatar profile-avatar">${author.slice(0, 1)}</span>`}<h1>${author}</h1><strong>${user.school} · ${user.grade} ${user.className}</strong><small>${user.role}${user.position ? ` · ${user.position}` : ""}</small>
       <div class="stat-row"><div class="stat"><strong>${uploaded.length}</strong><small>자료 수</small></div><div class="stat"><strong>${profileScore(author)}</strong><small>자료 평판 / 10</small></div></div>
     </div>
-    <div class="highlights">${own && user.highlights.length < 20 ? `<label class="highlight highlight-add" aria-label="하이라이트 추가">${icon("plus")}<input id="highlightFilesCircle" class="hidden-file" type="file" accept="image/*" multiple /></label>` : ""}${user.highlights.map((group, index) => `<button class="highlight" data-action="view-highlight" data-author="${author}" data-index="${index}"><img src="${group.images[0]}" alt="${group.title}" /></button>`).join("")}</div>
-    <div class="post-list">${uploaded.map(postMarkup).join("") || empty("upload-cloud", "업로드한 자료가 없습니다.")}</div></section>`;
+    <div class="highlights">${own && user.highlights.length < 20 ? `<button class="highlight highlight-add" data-action="open-highlight-create" aria-label="하이라이트 추가">${icon("plus")}</button>` : ""}${user.highlights.map((group, index) => `<button class="highlight" data-action="view-highlight" data-author="${author}" data-index="${index}"><img src="${group.cover || group.images[0]}" alt="${group.title}" /><small>${group.title || "Highlight"}</small></button>`).join("")}</div>
+    <div class="profile-tabs"><a href="#profilePosts">Posts</a><a href="#profileResources">Resources</a><a href="#profileHighlights">Highlights</a></div>
+    <div id="profilePosts" class="post-list">${uploaded.map(postMarkup).join("") || empty("upload-cloud", "업로드한 자료가 없습니다.")}</div>
+    <div id="profileResources" class="profile-section">${uploaded.filter((post) => post.media?.length).map((post) => `<button class="collection-item" data-action="open-post" data-id="${post.id}"><span><strong>${post.title}</strong><br><small>${post.media.length}개 파일</small></span>${icon("chevron-right")}</button>`).join("") || empty("folder-open", "자료가 없습니다.")}</div>
+    <div id="profileHighlights" class="profile-section highlight-library">${user.highlights.map((group, index) => `<button class="highlight-wide" data-action="view-highlight" data-author="${author}" data-index="${index}"><img src="${group.cover || group.images[0]}" alt="${group.title}" /><span>${group.title || `하이라이트 ${index + 1}`}<small>${group.images.length}장</small></span></button>`).join("") || empty("images", "하이라이트가 없습니다.")}</div></section>`;
 }
 
 function openDm(author) {
@@ -535,6 +551,7 @@ function openDm(author) {
 function renderDm() {
   const conversation = state.conversations.find((item) => item.user === state.activeConversation);
   const showConversation = state.dmTab === "messages" && Boolean(conversation);
+  const oldBox = $(".chat-messages"); const wasNearBottom = !oldBox || oldBox.scrollHeight - oldBox.scrollTop - oldBox.clientHeight < 80;
   let overlay = $(".dm-overlay"); let shell = overlay?.querySelector(".dm-shell");
   if (!overlay) {
     overlay = document.createElement("div"); overlay.className = "dm-overlay";
@@ -542,7 +559,7 @@ function renderDm() {
     overlay.append(shell); document.body.append(overlay);
   }
   shell.innerHTML = `<aside class="dm-sidebar ${showConversation ? "chat-open" : ""}"><div class="dm-head"><strong>메시지</strong><button class="icon-button" data-action="close-dm" aria-label="닫기">${icon("x")}</button></div><div class="dm-tabs"><button class="tiny dm-tab ${state.dmTab === "messages" ? "active" : ""}" data-action="dm-tab" data-tab="messages">대화</button><button class="tiny dm-tab ${state.dmTab === "requests" ? "active" : ""}" data-action="dm-tab" data-tab="requests">친구 요청</button></div><div class="conversation-list">${state.dmTab === "messages" ? state.conversations.map(conversationMarkup).join("") : requestMarkup()}</div></aside>${showConversation ? chatMarkup(conversation) : `<section class="chat-pane open">${empty("send", "대화를 선택하세요.")}</section>`}`;
-  lucide(); setTimeout(() => { const box = $(".chat-messages"); if (box) box.scrollTop = box.scrollHeight; }, 0); updateChrome();
+  lucide(); setTimeout(() => { const box = $(".chat-messages"); if (box && wasNearBottom) box.scrollTop = box.scrollHeight; }, 0); updateChrome();
 }
 function conversationMarkup(item) {
   const last = item.messages.at(-1); return `<button class="conversation-row ${item.user === state.activeConversation ? "active" : ""} ${item.unread ? "has-unread" : ""}" data-action="open-conversation" data-user="${item.user}"><span class="avatar">${item.user.slice(0, 1)}</span><span class="conversation-copy"><strong>${item.user} <i class="status-dot ${item.online ? "online" : ""}"></i></strong><small>${last?.type === "text" ? last.content : last ? "첨부 파일" : "새 대화"}</small></span><span><small>${last?.time || ""}</small>${item.unread ? `<span class="unread">${unreadLabel(item.unread)}</span>` : ""}</span></button>`;
@@ -552,7 +569,7 @@ function requestMarkup() {
 }
 function chatMarkup(item) {
   return `<section class="chat-pane open"><div class="dm-head"><button class="icon-button mobile-back" data-action="dm-back" aria-label="대화 목록">${icon("chevron-left")}</button><span class="avatar">${item.user.slice(0, 1)}</span><span><strong>${item.user}</strong><br><small>${item.online ? "온라인" : "오프라인"}</small></span><div class="toolbar" style="margin-left:auto"><div class="menu-wrap"><button class="icon-button" data-action="toggle-chat-menu" aria-label="더보기">${icon("more-horizontal")}</button><div class="chat-menu"><button class="menu-button" data-action="mark-unread">읽지 않음으로 표시</button><button class="menu-button" data-action="block-user">차단</button><button class="menu-button" data-action="report-user">신고</button></div></div><button class="icon-button" data-action="close-dm" aria-label="메시지 닫기">${icon("x")}</button></div></div>
-    <div class="chat-messages">${item.messages.map(messageMarkup).join("")}</div><div class="typing">${item.typing ? `${item.user}님이 입력 중...` : ""}</div>
+    <div class="chat-messages">${item.messages.map(messageMarkup).join("")}</div><button class="new-message-pill" data-action="jump-new-messages">New Messages</button><div class="typing">${item.typing ? `${item.user}님이 입력 중...` : ""}</div>
     <form id="chatForm" class="chat-compose"><label class="tiny" aria-label="파일 첨부">${icon("paperclip")}<input id="chatFile" class="hidden-file" type="file" /></label><input id="chatInput" placeholder="메시지 입력" autocomplete="off" /><button class="primary" aria-label="전송">${icon("send")}</button></form></section>`;
 }
 function messageMarkup(message) {
@@ -568,7 +585,11 @@ function refreshConversationRow(item) {
 function appendOpenMessage(item, message) {
   if (!state.dmOpen || state.dmTab !== "messages" || state.activeConversation !== item.user) return false;
   const messages = $(".chat-messages"); if (!messages) return false;
-  messages.insertAdjacentHTML("beforeend", messageMarkup(message)); messages.scrollTop = messages.scrollHeight; lucide(); return true;
+  const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 96 || message.from === "me";
+  messages.insertAdjacentHTML("beforeend", messageMarkup(message));
+  if (nearBottom) messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+  else $(".new-message-pill")?.classList.add("show");
+  lucide(); return true;
 }
 function sendMessage(type, content, name = "") {
   const item = state.conversations.find((entry) => entry.user === state.activeConversation); if (!item) return;
@@ -626,8 +647,10 @@ function openProfileEdit() {
   const form = $("#profileEditForm"); ["nickname", "bio", "school", "grade", "className", "role", "position"].forEach((name) => { form.elements[name].value = state.profile[name] || ""; }); dialogs.profileEdit.showModal();
 }
 async function handleHighlights(files) {
-  const urls = await Promise.all([...files].slice(0, 20 - state.profile.highlights.length).map(fileToDataUrl));
-  if (urls.length) state.profile.highlights.push({ id: crypto.randomUUID(), title: `하이라이트 ${state.profile.highlights.length + 1}`, images: urls });
+  const title = $("#highlightTitle")?.value?.trim() || `하이라이트 ${state.profile.highlights.length + 1}`;
+  const urls = await Promise.all([...files].slice(0, 20).map(fileToDataUrl));
+  const coverIndex = Math.max(0, Math.min(urls.length - 1, Number($("#highlightCover")?.value || 1) - 1));
+  if (urls.length && state.profile.highlights.length < 20) state.profile.highlights.push({ id: crypto.randomUUID(), title, cover: urls[coverIndex], images: urls });
   saveAll(); renderProfile();
 }
 function openWikiEdit() {
@@ -647,10 +670,31 @@ function showRevision(index) {
 function showHighlight(author, groupIndex, imageIndex = 0) {
   const groups = getUserProfile(author).highlights || []; const group = groups[groupIndex]; if (!group) return;
   state.activeHighlight = { author, group: groupIndex, image: (imageIndex + group.images.length) % group.images.length };
-  $("#highlightImage").src = group.images[state.activeHighlight.image]; dialogs.highlight.showModal(); lucide();
+  openStoryViewer(group.images, state.activeHighlight.image, group.title || "하이라이트");
+}
+function openStoryViewer(images, index = 0, title = "") {
+  state.activeViewer = { images, index: (index + images.length) % images.length, title, scale: 1 };
+  renderStoryViewer();
+  dialogs.highlight.showModal(); lucide();
+}
+function renderStoryViewer() {
+  const { images, index, title, scale } = state.activeViewer;
+  $("#highlightTitleLive").textContent = title;
+  $("#highlightCount").textContent = `${index + 1} / ${images.length}`;
+  $("#highlightProgress").innerHTML = images.map((_, i) => `<span class="${i <= index ? "active" : ""}"></span>`).join("");
+  const image = $("#highlightImage"); image.src = images[index]; image.style.transform = `scale(${scale})`;
+}
+function stepStory(direction) {
+  const viewer = state.activeViewer; if (!viewer.images.length) return;
+  viewer.index = (viewer.index + direction + viewer.images.length) % viewer.images.length; viewer.scale = 1; renderStoryViewer();
 }
 function setFormError(id, message) { const node = $(id); node.textContent = message; node.classList.remove("state-pop"); if (message) requestAnimationFrame(() => node.classList.add("state-pop")); }
 function validEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+function rememberSearch(query) {
+  const value = query.trim(); if (!value) return;
+  state.recentSearches = [value, ...state.recentSearches.filter((item) => item !== value)].slice(0, 8);
+  persist("recentSearches", state.recentSearches);
+}
 
 document.addEventListener("click", (event) => {
   if (event.target.matches("dialog[open]")) {
@@ -698,11 +742,14 @@ document.addEventListener("click", (event) => {
     return renderFeed();
   }
   if (action === "clear-tags") { state.feedTags = []; state.feedLimit = 6; return renderFeed(); }
+  if (action === "search-suggestion") { state.feedQuery = target.dataset.query; rememberSearch(state.feedQuery); return renderFeed(); }
+  if (action === "clear-school-feed") { state.feedSchool = ""; return renderFeed(); }
   if (action === "more-feed") { state.feedLimit += 6; return renderFeed(); }
-  if (action === "like-post") { const post = state.posts.find((item) => item.id === target.dataset.id); post.liked = !post.liked; post.likes += post.liked ? 1 : -1; saveAll(); return refreshPostCard(post.id); }
+  if (action === "like-post") { const post = state.posts.find((item) => item.id === target.dataset.id); post.liked = !post.liked; post.likes += post.liked ? 1 : -1; target.classList.toggle("liked", post.liked); target.classList.remove("like-pop"); requestAnimationFrame(() => target.classList.add("like-pop")); target.querySelector("span").textContent = post.likes; saveAll(); return; }
   if (action === "save-post") { const post = state.posts.find((item) => item.id === target.dataset.id); post.saved = !post.saved; saveAll(); return refreshPostCard(post.id); }
   if (action === "download-post") { const post = state.posts.find((item) => item.id === target.dataset.id); post.media.forEach((media) => { const a = document.createElement("a"); a.href = media.url; a.download = media.name; a.target = "_blank"; a.click(); }); return toast("다운로드를 시작했습니다."); }
   if (action === "media-prev" || action === "media-next") return moveCarousel(target.dataset.id, action === "media-next" ? 1 : -1);
+  if (action === "open-media-viewer") { const post = state.posts.find((item) => item.id === target.dataset.id); return openStoryViewer(post.media.filter((media) => media.type === "image").map((media) => media.url), Number(target.dataset.index), post.title); }
   if (action === "watch-post") { if (!state.watchHistory.includes(target.dataset.id)) state.watchHistory.unshift(target.dataset.id); state.watchHistory = state.watchHistory.slice(0, 100); saveAll(); return; }
   if (action === "open-comments") { state.activePost = target.dataset.id; state.replyTarget = null; renderComments(); return dialogs.comments.showModal(); }
   if (action === "close-comments") return dialogs.comments.close();
@@ -713,6 +760,7 @@ document.addEventListener("click", (event) => {
   if (action === "toggle-follow") { const author = target.dataset.author; state.following = state.following.includes(author) ? state.following.filter((item) => item !== author) : [...state.following, author]; saveAll(); return state.view === "profile" ? renderProfile(author) : refreshPostCard(target.closest(".post-card")?.id); }
   if (action === "dm-author") return openDm(target.dataset.author);
   if (action === "open-post") { dialogs.collection.open && dialogs.collection.close(); state.view = "feed"; state.feedQuery = ""; state.feedTags = []; updateChrome(); renderFeed(); setTimeout(() => document.getElementById(target.dataset.id)?.scrollIntoView({ behavior: "smooth" }), 0); return; }
+  if (action === "expand-post") { const card = document.getElementById(target.dataset.id); card?.querySelector(".post-text")?.classList.remove("collapsed"); target.remove(); return; }
   if (action === "focus-school") { const school = state.schools.find((item) => item.id === target.dataset.id); if (!school) return; state.view = "map"; state.selectedSchool = school.id; state.mapDetailOpen = true; state.mapView = { center: [school.lat, school.lng], zoom: Math.max(15, state.mapView.zoom || 7) }; saveAll(); return render(); }
   if (action === "edit-profile") { dialogs.settings.open && dialogs.settings.close(); return openProfileEdit(); }
   if (action === "open-settings") { if (!requireAuthenticated()) return; $("#themeLabel").textContent = state.theme === "dark" ? "다크" : "라이트"; return dialogs.settings.showModal(); }
@@ -724,8 +772,12 @@ document.addEventListener("click", (event) => {
   if (action === "language-setting") return toast("현재 언어: 한국어");
   if (action === "logout") { endRemoteSession(); state.session = null; state.view = "home"; saveAll(); dialogs.settings.close(); render(); return toast("로그아웃되었습니다."); }
   if (action === "delete-account") { if (!confirm("계정을 삭제하시겠습니까?")) return; state.accounts = state.accounts.filter((account) => account.email !== state.session?.email); state.session = null; state.view = "home"; saveAll(); dialogs.settings.close(); render(); return toast("회원 탈퇴가 완료되었습니다."); }
+  if (action === "view-avatar") return openStoryViewer([target.dataset.src], 0, target.dataset.title || "프로필 사진");
+  if (action === "open-highlight-create") { $("#highlightCreateForm")?.reset(); $("#highlightCreatePreview").innerHTML = ""; return dialogs.highlightCreate.showModal(); }
+  if (action === "close-highlight-create") return dialogs.highlightCreate.close();
+  if (action === "pick-highlight-cover") { $("#highlightCover").value = target.dataset.cover; return updateHighlightCoverPreview(); }
   if (action === "view-highlight") return showHighlight(target.dataset.author, Number(target.dataset.index));
-  if (action === "highlight-prev" || action === "highlight-next") return showHighlight(state.activeHighlight.author, state.activeHighlight.group, state.activeHighlight.image + (action === "highlight-next" ? 1 : -1));
+  if (action === "highlight-prev" || action === "highlight-next") return stepStory(action === "highlight-next" ? 1 : -1);
   if (action === "close-highlight") return dialogs.highlight.close();
   if (action === "edit-wiki") { if (!requireAuthenticated()) return; return openWikiEdit(); }
   if (action === "wiki-history") return showHistory();
@@ -744,12 +796,14 @@ document.addEventListener("click", (event) => {
   if (action === "clear-map-search") { state.mapQuery = ""; state.selectedSchool = null; state.mapDetailOpen = false; return renderMap(); }
   if (action === "close-school-detail") { state.mapDetailOpen = false; return $(".school-detail")?.remove(); }
   if (action === "select-map-school") { selectSchool(target.dataset.id); $$(".map-school-row").forEach((row) => row.classList.toggle("selected", row.dataset.id === target.dataset.id)); return; }
+  if (action === "open-school-hub") { const school = state.schools.find((item) => item.id === state.selectedSchool); state.feedSchool = school?.name || ""; state.view = "feed"; updateChrome(); return renderFeed(); }
   if (action === "view-school") { state.map?.closePopup(); return selectSchool(target.dataset.id); }
   if (action === "open-dm") return openDm();
   if (action === "close-dm") { state.dmOpen = false; $(".dm-overlay")?.remove(); return; }
   if (action === "dm-tab") { state.dmTab = target.dataset.tab; if (state.dmTab !== "messages") state.activeConversation = null; return renderDm(); }
-  if (action === "open-conversation") { state.dmTab = "messages"; state.activeConversation = target.dataset.user; markConversationRead(state.conversations.find((item) => item.user === state.activeConversation)); return renderDm(); }
+  if (action === "open-conversation") { state.dmTab = "messages"; state.activeConversation = target.dataset.user; return renderDm(); }
   if (action === "dm-back") { state.activeConversation = null; return renderDm(); }
+  if (action === "jump-new-messages") { const box = $(".chat-messages"); if (box) box.scrollTo({ top: box.scrollHeight, behavior: "smooth" }); target.classList.remove("show"); markConversationRead(state.conversations.find((item) => item.user === state.activeConversation)); updateChrome(); return; }
   if (action === "toggle-chat-menu") return $(".chat-menu")?.classList.toggle("open");
   if (action === "mark-unread") {
     const conversation = state.conversations.find((item) => item.user === state.activeConversation); if (!conversation) return;
@@ -766,7 +820,7 @@ document.addEventListener("change", async (event) => {
   if (target.id === "postFiles") return previewUpload(target.files);
   if (target.id === "chatFile") { const file = target.files[0]; if (!file) return; const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file"; return sendMessage(type, await fileToDataUrl(file), file.name); }
   if (target.matches('#profileEditForm [name="avatar"]')) { const file = target.files[0]; if (file) state.pendingAvatar = await fileToDataUrl(file); return; }
-  if (target.id === "highlightFiles" || target.id === "highlightFilesCircle") return handleHighlights(target.files);
+  if (target.id === "highlightFiles") return previewHighlightCreate(target.files);
 });
 
 document.addEventListener("input", (event) => {
@@ -782,6 +836,7 @@ document.addEventListener("input", (event) => {
     }, 120);
     return;
   }
+  if (event.target.id === "highlightCover") return updateHighlightCoverPreview();
   if (event.target.id === "schoolAutocomplete") { clearTimeout(window.schoolTimer); window.schoolTimer = setTimeout(() => searchSchools(event.target.value), 120); }
   if (event.target.id === "commandSearch") {
     const query = event.target.value.trim().toLowerCase();
@@ -789,11 +844,55 @@ document.addEventListener("input", (event) => {
   }
 });
 
+document.addEventListener("scroll", (event) => {
+  if (!event.target.classList?.contains("chat-messages")) return;
+  const box = event.target;
+  if (box.scrollHeight - box.scrollTop - box.clientHeight > 48) return;
+  $(".new-message-pill")?.classList.remove("show");
+  const conversation = state.conversations.find((item) => item.user === state.activeConversation);
+  if (markConversationRead(conversation)) { updateChrome(); refreshConversationRow(conversation); }
+}, true);
+
 document.addEventListener("keydown", (event) => {
+  if (dialogs.highlight.open) {
+    if (event.key === "Escape") return dialogs.highlight.close();
+    if (event.key === "ArrowLeft") return stepStory(-1);
+    if (event.key === "ArrowRight") return stepStory(1);
+  }
+  if (event.target.id === "feedSearch" && event.key === "Enter") { rememberSearch(event.target.value); return renderFeed(); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); return dialogs.command.open ? dialogs.command.close() : openCommand(); }
   if (!dialogs.command.open || ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
   const shortcuts = { n: "schedule", p: "post", m: "messages" };
   if (shortcuts[event.key.toLowerCase()]) { event.preventDefault(); runCommand(shortcuts[event.key.toLowerCase()]); }
+});
+
+let gestureStart = null;
+let pinchStart = 0;
+document.addEventListener("touchstart", (event) => {
+  if (dialogs.highlight.open && event.touches.length === 2) {
+    pinchStart = Math.hypot(event.touches[0].clientX - event.touches[1].clientX, event.touches[0].clientY - event.touches[1].clientY);
+    return;
+  }
+  const touch = event.touches[0]; if (!touch) return;
+  const carousel = event.target.closest?.(".media-carousel");
+  if (dialogs.highlight.open || carousel) gestureStart = { x: touch.clientX, y: touch.clientY, carousel };
+}, { passive: true });
+document.addEventListener("touchmove", (event) => {
+  if (!dialogs.highlight.open || event.touches.length !== 2 || !pinchStart) return;
+  const distance = Math.hypot(event.touches[0].clientX - event.touches[1].clientX, event.touches[0].clientY - event.touches[1].clientY);
+  state.activeViewer.scale = Math.max(1, Math.min(3, distance / pinchStart)); renderStoryViewer();
+}, { passive: true });
+document.addEventListener("touchend", (event) => {
+  if (!gestureStart) return;
+  const touch = event.changedTouches[0]; const dx = touch.clientX - gestureStart.x; const dy = touch.clientY - gestureStart.y;
+  if (gestureStart.carousel && Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy)) moveCarousel(gestureStart.carousel.dataset.carousel, dx < 0 ? 1 : -1);
+  else if (dialogs.highlight.open && Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy)) stepStory(dx < 0 ? 1 : -1);
+  else if (dialogs.highlight.open && dy > 80) dialogs.highlight.close();
+  gestureStart = null; pinchStart = 0;
+}, { passive: true });
+document.addEventListener("dblclick", (event) => {
+  if (!dialogs.highlight.open || event.target.id !== "highlightImage") return;
+  state.activeViewer.scale = state.activeViewer.scale > 1 ? 1 : 2; renderStoryViewer();
 });
 
 document.addEventListener("submit", (event) => {
@@ -821,16 +920,33 @@ document.addEventListener("submit", (event) => {
   }
   if (event.target.id === "uploadForm") return createPost(event.target);
   if (event.target.id === "commentForm") return createComment(event.target);
+  if (event.target.id === "highlightCreateForm") return createHighlight(event.target);
   if (event.target.id === "profileEditForm") { const data = Object.fromEntries(new FormData(event.target)); delete data.avatar; state.profile = { ...state.profile, ...data, avatar: state.pendingAvatar || state.profile.avatar }; state.pendingAvatar = null; saveAll(); dialogs.profileEdit.close(); return renderProfile(); }
   if (event.target.id === "wikiEditForm") return saveWiki(event.target);
   if (event.target.id === "chatForm") { const input = $("#chatInput"); if (!input.value.trim()) return; sendMessage("text", input.value.trim()); input.value = ""; }
 });
 
 let stagedMedia = [];
+let stagedHighlightFiles = [];
 function fileToDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); }
 async function previewUpload(files) {
   stagedMedia = await Promise.all([...files].map(async (file) => ({ type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type === "application/pdf" ? "pdf" : "file", url: await fileToDataUrl(file), name: file.name })));
-  $("#uploadPreview").innerHTML = stagedMedia.map((media) => media.type === "image" ? `<img src="${media.url}" alt="${media.name}" />` : media.type === "video" ? `<video src="${media.url}"></video>` : `<span class="tiny">${icon("file")}${media.name}</span>`).join(""); lucide();
+  $("#uploadPreview").innerHTML = stagedMedia.map((media) => media.type === "image" ? `<figure><img src="${media.url}" alt="${media.name}" /><figcaption>${media.name}</figcaption></figure>` : media.type === "video" ? `<figure><video src="${media.url}" controls></video><figcaption>${media.name}</figcaption></figure>` : media.type === "pdf" ? `<figure class="file-preview">${icon("file-text")}<figcaption>${media.name}</figcaption></figure>` : `<figure class="file-preview">${icon("paperclip")}<figcaption>${media.name}</figcaption></figure>`).join(""); lucide();
+}
+async function previewHighlightCreate(files) {
+  stagedHighlightFiles = [...files].slice(0, 20);
+  const previews = await Promise.all(stagedHighlightFiles.map(fileToDataUrl));
+  $("#highlightCreatePreview").innerHTML = previews.map((url, index) => `<button type="button" class="cover-pick ${index === Number($("#highlightCover").value || 1) - 1 ? "active" : ""}" data-action="pick-highlight-cover" data-cover="${index + 1}"><img src="${url}" alt="하이라이트 ${index + 1}" /><span>${index + 1}</span></button>`).join("");
+  $("#highlightCover").max = String(Math.max(1, previews.length)); lucide();
+}
+function updateHighlightCoverPreview() {
+  const selected = Number($("#highlightCover").value || 1);
+  $$(".cover-pick").forEach((item) => item.classList.toggle("active", Number(item.dataset.cover) === selected));
+}
+async function createHighlight(form) {
+  if (!stagedHighlightFiles.length) return toast("하이라이트 사진을 선택해주세요.");
+  await handleHighlights(stagedHighlightFiles);
+  stagedHighlightFiles = []; form.reset(); $("#highlightCreatePreview").innerHTML = ""; dialogs.highlightCreate.close(); toast("하이라이트가 추가되었습니다.");
 }
 function createPost(form) {
   const data = Object.fromEntries(new FormData(form)); const id = crypto.randomUUID();
@@ -840,7 +956,7 @@ function createPost(form) {
 }
 function createComment(form) {
   const post = state.posts.find((item) => item.id === state.activePost); const body = $("#commentInput").value.trim(); if (!body) return;
-  const entry = { id: crypto.randomUUID(), author: state.profile.nickname, body, likes: 0, liked: false, authorLiked: state.profile.nickname === post.author, replies: [] };
+  const entry = { id: crypto.randomUUID(), author: state.profile.nickname, body, likes: 0, liked: false, authorLiked: state.profile.nickname === post.author, createdAt: Date.now(), replies: [] };
   if (state.replyTarget) post.comments.find((item) => item.id === state.replyTarget.comment).replies.push({ ...entry, replies: undefined }); else post.comments.push(entry);
   state.replyTarget = null; form.reset(); saveAll(); renderComments();
 }
@@ -850,14 +966,15 @@ function saveWiki(form) {
 }
 async function searchSchools(query) {
   const box = $("#schoolSuggestions"); const q = query.trim().toLowerCase().replace(/\s+/g, ""); if (!q) return box.classList.remove("open");
-  const localMatches = state.schools.filter((school) => school.name.toLowerCase().replace(/\s+/g, "").includes(q)).map((school) => school.name);
-  let names = [...localMatches];
+  const localMatches = state.schools.filter((school) => `${school.name}${school.location}${school.address}`.toLowerCase().replace(/\s+/g, "").includes(q)).map((school) => ({ name: school.name, location: school.location || school.address, members: school.members || 0 }));
+  let results = [...localMatches];
   try {
     const response = await fetch(`https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=1000&SCHUL_NM=${encodeURIComponent(query.trim())}`);
     const rows = (await response.json()).schoolInfo?.[1]?.row || [];
-    names.push(...rows.filter((row) => OFFICIAL_SCHOOL_TYPES.includes(schoolTypeOf(row.SCHUL_KND_SC_NM)) && row.SCHUL_NM.replace(/\s+/g, "").toLowerCase().includes(q)).map((row) => row.SCHUL_NM));
+    results.push(...rows.filter((row) => OFFICIAL_SCHOOL_TYPES.includes(schoolTypeOf(row.SCHUL_KND_SC_NM)) && row.SCHUL_NM.replace(/\s+/g, "").toLowerCase().includes(q)).map((row) => ({ name: row.SCHUL_NM, location: row.LCTN_SC_NM || row.JU_ORG_NM || "", members: 0 })));
   } catch {}
-  names = [...new Set(names)].slice(0, 12); box.innerHTML = names.length ? names.map((name) => `<button type="button" class="suggestion" data-school="${name}">${name}</button>`).join("") : `<div class="suggestion">검색 결과가 없습니다.</div>`; box.classList.add("open");
+  results = [...new Map(results.map((item) => [item.name, item])).values()].slice(0, 12);
+  box.innerHTML = results.length ? results.map((item) => `<button type="button" class="suggestion school-suggestion" data-school="${item.name}"><strong>${item.name}</strong><small>${item.location || "지역 정보 없음"} · ${item.members}명</small></button>`).join("") : `<div class="suggestion">검색 결과가 없습니다.</div>`; box.classList.add("open");
 }
 $("#schoolSuggestions")?.addEventListener("click", (event) => { const button = event.target.closest("[data-school]"); if (!button) return; $("#schoolAutocomplete").value = button.dataset.school; $("#schoolSuggestions").classList.remove("open"); });
 

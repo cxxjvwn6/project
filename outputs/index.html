@@ -18,7 +18,7 @@
     <script src="./app.js?v=41" defer></script>
   </head>
   <body>
-    <div id="loading" class="loading-screen"><span class="logo-orb"><img src="./airboard-logo.png?v=41" alt="" /></span></div>
+    <div id="loading" class="loading-screen"><div class="loading-stack"><span class="logo-orb"><img src="./airboard-logo.png?v=41" alt="" /></span><span class="skeleton skeleton-title"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line short"></span></div></div>
     <div class="shell">
       <header id="homeToolbar" class="topbar">
         <button class="brand" data-action="go" data-view="home" aria-label="AirBoard">
@@ -170,10 +170,24 @@
       </div>
     </dialog>
 
-    <dialog id="highlightDialog" class="modal media-modal">
-      <div class="modal-panel">
-        <div class="modal-head"><h2>하이라이트</h2><button class="icon-button" data-action="close-highlight" aria-label="닫기"><i data-lucide="x"></i></button></div>
-        <div class="highlight-viewer"><button class="icon-button" data-action="highlight-prev" aria-label="이전"><i data-lucide="chevron-left"></i></button><img id="highlightImage" alt="프로필 하이라이트" /><button class="icon-button" data-action="highlight-next" aria-label="다음"><i data-lucide="chevron-right"></i></button></div>
+    <dialog id="highlightCreateDialog" class="modal">
+      <form method="dialog" class="modal-panel" id="highlightCreateForm">
+        <div class="modal-head"><h2>하이라이트 추가</h2><button type="button" class="icon-button" data-action="close-highlight-create" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <label>제목<input id="highlightTitle" name="title" placeholder="예: 학교생활" /></label>
+        <label>사진<input id="highlightFiles" name="images" type="file" accept="image/*" multiple required /></label>
+        <label>커버 이미지 번호<input id="highlightCover" name="cover" type="number" min="1" value="1" /></label>
+        <div id="highlightCreatePreview" class="upload-preview story-preview"></div>
+        <button class="primary wide" value="default"><i data-lucide="plus"></i>추가</button>
+      </form>
+    </dialog>
+
+    <dialog id="highlightDialog" class="modal media-modal story-modal">
+      <div class="story-panel">
+        <div id="highlightProgress" class="story-progress"></div>
+        <div class="story-head"><strong id="highlightTitleLive">하이라이트</strong><span id="highlightCount">1 / 1</span><button class="icon-button" data-action="close-highlight" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <button class="story-nav prev" data-action="highlight-prev" aria-label="이전"><i data-lucide="chevron-left"></i></button>
+        <img id="highlightImage" alt="프로필 하이라이트" />
+        <button class="story-nav next" data-action="highlight-next" aria-label="다음"><i data-lucide="chevron-right"></i></button>
       </div>
     </dialog>
 
