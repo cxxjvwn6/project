@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#171614" />
+    <title>AirBoard</title>
+    <meta name="application-name" content="AirBoard" />
+    <meta name="description" content="AirBoard 학생 생활 플랫폼" />
+    <link rel="icon" type="image/png" href="./airboard-logo.png?v=41" />
+    <link rel="apple-touch-icon" href="./airboard-logo.png?v=41" />
+    <link rel="manifest" href="./manifest.json?v=41" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="./styles.css?v=41" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <script src="./config.js?v=41"></script>
+    <script src="./icons.js?v=41" defer></script>
+    <script src="./app.js?v=41" defer></script>
+  </head>
+  <body>
+    <div id="loading" class="loading-screen"><span class="logo-orb"><img src="./airboard-logo.png?v=41" alt="" /></span></div>
+    <div class="shell">
+      <header id="homeToolbar" class="topbar">
+        <button class="brand" data-action="go" data-view="home" aria-label="AirBoard">
+          <span class="brand-mark"><img src="./airboard-logo.png?v=41" alt="" /></span><strong>AirBoard</strong>
+        </button>
+        <div class="top-actions">
+          <button class="icon-button" data-action="open-dm" aria-label="메시지">
+            <i data-lucide="send"></i><span id="dmBadge" class="badge-count"></span>
+          </button>
+          <button class="profile-button" data-action="open-login"><i data-lucide="user"></i><span>로그인</span></button>
+        </div>
+      </header>
+
+      <main id="app" class="app" aria-live="polite"></main>
+
+      <nav class="bottom-nav" aria-label="메인 네비게이션">
+        <button class="nav-item active" data-action="go" data-view="home" aria-label="홈"><i data-lucide="home"></i></button>
+        <button class="nav-item" data-action="go" data-view="map" aria-label="지도"><i data-lucide="map"></i></button>
+        <button class="nav-item nav-create" data-action="open-command" aria-label="빠른 실행"><i data-lucide="plus"></i></button>
+        <button class="nav-item" data-action="go" data-view="feed" aria-label="자료 및 커뮤니티"><i data-lucide="layers-3"></i></button>
+        <button class="nav-item" data-action="go" data-view="profile" aria-label="프로필"><i data-lucide="user"></i></button>
+      </nav>
+    </div>
+
+    <dialog id="scheduleDialog" class="modal">
+      <form method="dialog" class="modal-panel" id="scheduleForm" novalidate>
+        <div class="modal-head"><h2>일정 등록</h2><button type="button" class="icon-button" data-action="close-schedule" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <label>일정 제목<input name="title" required /></label>
+        <div class="triple-grid">
+          <label>날짜<input name="date" type="date" required /></label>
+          <label>시작 시간<select name="start" data-time-select required></select></label>
+          <label>종료 시간<select name="end" data-time-select required></select></label>
+        </div>
+        <label>메모<textarea name="memo" rows="3"></textarea></label>
+        <button class="primary wide" value="default"><i data-lucide="calendar-plus"></i>등록</button>
+      </form>
+    </dialog>
+
+    <dialog id="loginDialog" class="modal auth-modal">
+      <form method="dialog" class="modal-panel" id="loginForm" novalidate>
+        <div class="modal-head"><h2>Log In</h2><button type="button" class="icon-button" data-action="close-login" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div class="social-grid">
+          <button type="button" class="social google" data-action="oauth" data-provider="Google">Google</button>
+          <button type="button" class="social apple" data-action="oauth" data-provider="Apple">Apple</button>
+          <button type="button" class="social kakao" data-action="oauth" data-provider="Kakao">Kakao</button>
+        </div>
+        <div class="divider"><span>또는</span></div>
+        <label>이메일<input name="email" type="email" required autocomplete="email" /></label>
+        <label>비밀번호<span class="password-field"><input name="password" type="password" required autocomplete="current-password" /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label>
+        <p id="loginError" class="form-error"></p>
+        <button class="primary wide" value="default">로그인</button>
+        <button type="button" class="text-button" data-action="switch-signup">계정 만들기</button>
+      </form>
+    </dialog>
+
+    <dialog id="signupDialog" class="modal auth-modal">
+      <form method="dialog" class="modal-panel" id="signupForm" novalidate>
+        <div class="modal-head"><h2>Sign Up</h2><button type="button" class="icon-button" data-action="close-signup" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <label>이메일<span class="inline-field"><input name="email" type="email" required /><button type="button" class="tiny" data-action="send-verification">인증 코드 발송</button></span></label>
+        <label>이메일 인증<span class="inline-field"><input name="verificationCode" inputmode="numeric" placeholder="인증 코드" required /><button type="button" class="tiny" data-action="verify-email">인증</button></span></label>
+        <div class="two-grid"><label>비밀번호<span class="password-field"><input name="password" type="password" required /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label><label>비밀번호 확인<span class="password-field"><input name="confirm" type="password" required /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label></div>
+        <label>닉네임<input name="nickname" required /></label>
+        <label class="autocomplete-field">학교<input id="schoolAutocomplete" name="school" placeholder="예: 내정중학교" autocomplete="off" required /><div id="schoolSuggestions" class="suggestions"></div></label>
+        <div class="two-grid"><label>학년<select name="grade"><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label><label>반<input name="className" placeholder="예: 1반" /></label></div>
+        <div class="two-grid"><label>역할<input name="role" placeholder="예: 축구부, 물리동아리" /></label><label>직책<input name="position" placeholder="예: 학생회 홍보부장, 1-7 부회장" /></label></div>
+        <p id="signupError" class="form-error"></p>
+        <button class="primary wide" value="default">가입</button>
+        <button type="button" class="text-button" data-action="switch-login">이미 계정이 있어요</button>
+      </form>
+    </dialog>
+
+    <dialog id="uploadDialog" class="modal">
+      <form method="dialog" class="modal-panel" id="uploadForm">
+        <div class="modal-head"><h2>게시글 작성</h2><button type="button" class="icon-button" data-action="close-upload" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <label>제목<input name="title" required /></label>
+        <label>내용<textarea name="body" rows="5" required></textarea></label>
+        <label>추천 태그<input name="tags" placeholder="#중간고사 #9모 #수행평가" /></label>
+        <label class="file-drop" aria-label="파일 첨부"><i data-lucide="paperclip"></i><input id="postFiles" name="files" type="file" multiple /></label>
+        <div id="uploadPreview" class="upload-preview"></div>
+        <button class="primary wide" value="default"><i data-lucide="upload"></i>게시</button>
+      </form>
+    </dialog>
+
+    <dialog id="commentsDialog" class="modal">
+      <div class="modal-panel">
+        <div class="modal-head"><h2>댓글</h2><button class="icon-button" data-action="close-comments" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div id="commentsList" class="comments-list"></div>
+        <form id="commentForm" class="comment-compose"><input id="commentInput" name="comment" placeholder="댓글 입력" required /><button class="primary" aria-label="댓글 등록"><i data-lucide="send"></i></button></form>
+      </div>
+    </dialog>
+
+    <dialog id="profileEditDialog" class="modal">
+      <form method="dialog" class="modal-panel" id="profileEditForm">
+        <div class="modal-head"><h2>프로필 수정</h2><button type="button" class="icon-button" data-action="close-profile-edit" aria-label="취소"><i data-lucide="x"></i></button></div>
+        <label>프로필 사진<input name="avatar" type="file" accept="image/*" /></label>
+        <label>닉네임<input name="nickname" /></label>
+        <label>자기소개<textarea name="bio" rows="3"></textarea></label>
+        <label>학교<input name="school" /></label>
+        <div class="two-grid"><label>학년<select name="grade"><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label><label>반<input name="className" /></label></div>
+        <div class="two-grid"><label>역할<input name="role" /></label><label>직책<input name="position" /></label></div>
+        <div class="modal-actions"><button type="button" data-action="close-profile-edit" class="ghost">취소</button><button value="default" class="primary">저장</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="settingsDialog" class="modal">
+      <div class="modal-panel">
+        <div class="modal-head"><h2>설정</h2><button class="icon-button" data-action="close-settings" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div class="settings-list">
+          <button data-action="open-saved"><i data-lucide="bookmark"></i><span>저장한 목록</span><i data-lucide="chevron-right"></i></button>
+          <button data-action="open-watch-history"><i data-lucide="history"></i><span>시청 기록</span><i data-lucide="chevron-right"></i></button>
+          <button data-action="edit-profile"><i data-lucide="user-cog"></i><span>프로필 설정</span><i data-lucide="chevron-right"></i></button>
+          <button data-action="language-setting"><i data-lucide="languages"></i><span>언어 설정</span><strong>한국어</strong></button>
+          <button data-action="toggle-theme"><i data-lucide="sun-moon"></i><span>라이트 / 다크 모드</span><strong id="themeLabel">다크</strong></button>
+          <button data-action="logout"><i data-lucide="log-out"></i><span>로그아웃</span></button>
+          <button class="danger-row" data-action="delete-account"><i data-lucide="user-x"></i><span>회원 탈퇴</span></button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="collectionDialog" class="modal">
+      <div class="modal-panel">
+        <div class="modal-head"><h2 id="collectionTitle">저장한 목록</h2><button class="icon-button" data-action="close-collection" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div id="collectionList" class="collection-list"></div>
+      </div>
+    </dialog>
+
+    <dialog id="wikiEditDialog" class="modal">
+      <form method="dialog" class="modal-panel" id="wikiEditForm">
+        <div class="modal-head"><h2>학교 문서 수정</h2><button type="button" class="icon-button" data-action="close-wiki-edit" aria-label="취소"><i data-lucide="x"></i></button></div>
+        <label>학교 설명<textarea name="description" rows="4"></textarea></label>
+        <label>여담<textarea name="trivia" rows="3"></textarea></label>
+        <label>기타 정보<textarea name="extra" rows="3"></textarea></label>
+        <label>수정 요약<input name="summary" required /></label>
+        <div class="modal-actions"><button type="button" data-action="close-wiki-edit" class="ghost">취소</button><button value="default" class="primary">문서 저장</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="historyDialog" class="modal">
+      <div class="modal-panel">
+        <div class="modal-head"><h2>수정 기록</h2><button class="icon-button" data-action="close-history" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </dialog>
+
+    <dialog id="revisionDialog" class="modal">
+      <div class="modal-panel">
+        <div class="modal-head"><h2 id="revisionTitle">문서 버전</h2><button class="icon-button" data-action="close-revision" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div id="revisionDocument"></div>
+      </div>
+    </dialog>
+
+    <dialog id="highlightDialog" class="modal media-modal">
+      <div class="modal-panel">
+        <div class="modal-head"><h2>하이라이트</h2><button class="icon-button" data-action="close-highlight" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div class="highlight-viewer"><button class="icon-button" data-action="highlight-prev" aria-label="이전"><i data-lucide="chevron-left"></i></button><img id="highlightImage" alt="프로필 하이라이트" /><button class="icon-button" data-action="highlight-next" aria-label="다음"><i data-lucide="chevron-right"></i></button></div>
+      </div>
+    </dialog>
+
+    <dialog id="commandDialog" class="command-modal">
+      <div class="command-panel">
+        <div class="command-search"><i data-lucide="search"></i><input id="commandSearch" placeholder="빠른 실행" autocomplete="off" /><button class="icon-button" data-action="close-command" aria-label="닫기"><i data-lucide="x"></i></button></div>
+        <div id="commandList" class="command-list">
+          <button class="command-item" data-action="run-command" data-command="schedule"><i data-lucide="calendar-plus"></i><span><strong>일정 등록</strong><small>새 일정을 추가합니다</small></span><kbd>N</kbd></button>
+          <button class="command-item" data-action="run-command" data-command="post"><i data-lucide="upload"></i><span><strong>게시글 작성</strong><small>자료와 게시물을 공유합니다</small></span><kbd>P</kbd></button>
+          <button class="command-item" data-action="run-command" data-command="messages"><i data-lucide="send"></i><span><strong>메시지</strong><small>대화 목록을 엽니다</small></span><kbd>M</kbd></button>
+          <div class="command-separator"></div>
+          <button class="command-item" data-action="run-command" data-command="home"><i data-lucide="home"></i><span><strong>홈</strong><small>일정과 달력</small></span></button>
+          <button class="command-item" data-action="run-command" data-command="map"><i data-lucide="map"></i><span><strong>학교 지도</strong><small>전국 학교 탐색</small></span></button>
+          <button class="command-item" data-action="run-command" data-command="feed"><i data-lucide="layers-3"></i><span><strong>자료 및 커뮤니티</strong><small>피드와 검색</small></span></button>
+          <button class="command-item" data-action="run-command" data-command="profile"><i data-lucide="user"></i><span><strong>프로필</strong><small>내 활동과 설정</small></span></button>
+        </div>
+      </div>
+    </dialog>
+  </body>
+</html>
