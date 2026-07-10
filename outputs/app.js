@@ -344,16 +344,21 @@ function filteredMapSchools() {
 }
 
 function schoolAreaParts(school) {
-  const parts = (school.address || school.location || "").trim().split(/\s+/).filter(Boolean);
+  const parts = (school.areaAddress || school.address || school.location || "").replace(/\([^)]*\)/g, " ").trim().split(/\s+/).filter(Boolean);
   const province = parts[0] || "지역 미상";
+  const metropolitan = /(특별시|광역시|특별자치시|특별자치도)$/.test(province);
   const cityIndex = parts.findIndex((part, index) => index > 0 && /(시|군)$/.test(part));
-  const districtIndex = parts.findIndex((part, index) => index > 0 && /(구)$/.test(part));
-  const neighborhoodIndex = parts.findIndex((part, index) => index > 0 && /(동|읍|면|리|가)$/.test(part.replace(/\d+가$/, "가")));
+  const districtIndex = parts.findIndex((part, index) => index > 0 && /(구|군)$/.test(part) && index !== cityIndex);
+  const neighborhoodIndex = parts.findIndex((part, index) => {
+    if (index <= 0) return false;
+    const cleaned = part.replace(/\d+가$/, "가").replace(/[,\d-].*$/, "");
+    return /(동|읍|면|리|가)$/.test(cleaned) && !/(특별시|광역시|자치시|자치도|시|군|구)$/.test(cleaned);
+  });
   return {
     province,
-    city: cityIndex > 0 ? parts[cityIndex] : province,
+    city: metropolitan && districtIndex > 0 ? parts[districtIndex] : (cityIndex > 0 ? parts[cityIndex] : province),
     district: districtIndex > 0 ? parts[districtIndex] : (cityIndex > 0 ? parts[cityIndex] : province),
-    neighborhood: neighborhoodIndex > 0 ? parts[neighborhoodIndex] : (districtIndex > 0 ? parts[districtIndex] : (cityIndex > 0 ? parts[cityIndex] : province))
+    neighborhood: neighborhoodIndex > 0 ? parts[neighborhoodIndex].replace(/[,\d-].*$/, "") : null
   };
 }
 
@@ -361,6 +366,7 @@ function clusterSchoolsByArea(schools, level) {
   const groups = new Map();
   schools.forEach((school) => {
     const areas = schoolAreaParts(school);
+    if (level === "neighborhood" && !areas.neighborhood) return;
     const key = [areas.province, level === "province" ? "" : areas.city, ["district", "neighborhood"].includes(level) ? areas.district : "", level === "neighborhood" ? areas.neighborhood : ""].filter(Boolean).join(" ");
     const group = groups.get(key) || { name: areas[level], schools: [], lat: 0, lng: 0 };
     group.schools.push(school);
@@ -375,7 +381,7 @@ function renderMap() {
   const schools = filteredMapSchools();
   const school = state.mapDetailOpen ? schools.find((item) => item.id === state.selectedSchool) : null;
   const schoolPosts = school ? state.posts.filter((post) => post.school === school.name) : [];
-  const dataStatus = state.schoolDataStatus === "official" ? "공식 전국 학교 데이터" : state.schoolDataStatus === "loading" ? "공식 데이터 로딩 중" : "공식 API 키 필요";
+  const dataStatus = ["official", "official-file"].includes(state.schoolDataStatus) ? "공식 전국 학교 데이터" : state.schoolDataStatus === "loading" ? "공식 데이터 로딩 중" : "공식 데이터 연결 필요";
   const listSchools = schools.slice(0, 28);
   $("#app").innerHTML = `<section class="map-layout">
     <div id="realMap"></div>
@@ -407,48 +413,118 @@ function schoolDetailMarkup(school, posts) {
     </div>
     <div class="school-content"><strong>학교 게시글 및 자료</strong>${shown.length ? shown.map((post) => `<div class="school-content-item"><button class="author-button" data-action="view-author" data-author="${post.author}"><span class="avatar">${post.author.slice(0, 1)}</span><span><strong>${post.author}</strong><br><small>${post.school}</small></span></button><button class="text-button" data-action="open-post" data-id="${post.id}"><strong>${post.title}</strong></button></div>`).join("") : empty("inbox", "이 학교의 게시물이 없습니다.")}${posts.length > shown.length ? `<button class="tiny" data-action="more-school-posts">${icon("chevron-down")}더보기</button>` : ""}</div></article>`;
 }
-function initMap() {
-  if (!window.L || !$("#realMap")) return;
-  if (state.map) { state.mapView = { center: [state.map.getCenter().lat, state.map.getCenter().lng], zoom: state.map.getZoom() }; state.map.remove(); state.map = null; }
-  state.map = L.map("realMap", { zoomControl: false, preferCanvas: true, zoomSnap: .25, zoomDelta: .5, wheelDebounceTime: 12, wheelPxPerZoomLevel: 120, zoomAnimation: true, zoomAnimationThreshold: 10, fadeAnimation: true, markerZoomAnimation: true, inertia: true, inertiaDeceleration: 2400, easeLinearity: .16 }).setView(state.mapView.center, state.mapView.zoom);
-  L.control.zoom({ position: "topright" }).addTo(state.map);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(state.map);
-  state.map._airMarkers = L.layerGroup().addTo(state.map);
+function loadKakaoMapSdk() {
+  if (window.kakao?.maps?.Map) return Promise.resolve();
+  if (window.airKakaoMapPromise) return window.airKakaoMapPromise;
+  const appKey = window.AIRBOARD_CONFIG?.kakaoMapJavaScriptKey || window.AIRBOARD_CONFIG?.kakaoMapJavascriptKey;
+  if (!appKey) return Promise.reject(new Error("KAKAO_MAP_JAVASCRIPT_KEY_REQUIRED"));
+  window.airKakaoMapPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&autoload=false`;
+    script.async = true;
+    script.onload = () => {
+      if (!window.kakao?.maps?.load) return reject(new Error("KAKAO_MAP_LOAD_FAILED"));
+      window.kakao.maps.load(resolve);
+    };
+    script.onerror = () => reject(new Error("KAKAO_MAP_LOAD_FAILED"));
+    document.head.appendChild(script);
+  });
+  return window.airKakaoMapPromise;
+}
+
+function mapZoomToKakaoLevel(zoom) {
+  return Math.max(1, Math.min(14, 20 - Math.round(zoom || 7)));
+}
+
+function kakaoLevelToMapZoom(level) {
+  return Math.max(6, Math.min(19, 20 - Math.round(level || 13)));
+}
+
+function showKakaoMapNotice(message = "카카오 지도 API 키가 필요합니다.") {
+  const map = $("#realMap");
+  if (!map) return;
+  map.innerHTML = `<div class="map-sdk-notice"><span class="brand-mark"><img src="./airboard-logo.png?v=41" alt="" /></span><strong>${message}</strong><small>카카오 디벨로퍼스의 JavaScript SDK 도메인에 현재 사이트가 등록되어 있어야 지도가 표시됩니다.</small></div>`;
+}
+
+async function initMap() {
+  if (!$("#realMap")) return;
+  try {
+    await loadKakaoMapSdk();
+  } catch (error) {
+    showKakaoMapNotice(error.message === "KAKAO_MAP_JAVASCRIPT_KEY_REQUIRED" ? "카카오 지도 키가 설정되지 않았습니다." : "카카오 지도를 불러오지 못했습니다.");
+    return;
+  }
+  const kmap = window.kakao.maps;
+  if (state.map) {
+    const center = state.map.getCenter();
+    state.mapView = { center: [center.getLat(), center.getLng()], zoom: kakaoLevelToMapZoom(state.map.getLevel()) };
+    (state.map._airMarkers || []).forEach((marker) => marker.setMap(null));
+    $("#realMap").innerHTML = "";
+    state.map = null;
+  }
+  state.map = new kmap.Map($("#realMap"), {
+    center: new kmap.LatLng(state.mapView.center[0], state.mapView.center[1]),
+    level: mapZoomToKakaoLevel(state.mapView.zoom)
+  });
+  state.map.addControl(new kmap.ZoomControl(), kmap.ControlPosition.RIGHT);
+  state.map._airMarkers = [];
   let drawFrame = 0;
-  const draw = () => {
-    cancelAnimationFrame(drawFrame);
-    const zoom = state.map.getZoom();
-    state.mapView = { center: [state.map.getCenter().lat, state.map.getCenter().lng], zoom }; persist("mapView", state.mapView);
-    drawFrame = requestAnimationFrame(() => {
-      const visibleBounds = state.map.getBounds().pad(.28); state.map._airMarkers.clearLayers();
-      const visible = (item) => visibleBounds.contains([item.lat, item.lng]);
-      const schools = filteredMapSchools().filter(visible);
-      if (zoom < 7.75) clusterSchoolsByArea(schools, "province").forEach((item) => addCluster(item, 8.75, "region"));
-      else if (zoom < 10.25) clusterSchoolsByArea(schools, "city").forEach((item) => addCluster(item, 11.25, "city"));
-      else if (zoom < 12.75) clusterSchoolsByArea(schools, "district").forEach((item) => addCluster(item, 13.75, "district"));
-      else if (zoom < 15.25) clusterSchoolsByArea(schools, "neighborhood").forEach((item) => addCluster(item, 16.25, "neighborhood"));
-      else drawSchools(schools, zoom);
+  const clearMarkers = () => {
+    (state.map._airMarkers || []).forEach((marker) => marker.setMap(null));
+    state.map._airMarkers = [];
+  };
+  const visible = (item) => {
+    const bounds = state.map.getBounds();
+    return !bounds?.contain || bounds.contain(new kmap.LatLng(item.lat, item.lng));
+  };
+  const addMarker = (position, html, onClick, label) => {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = html;
+    const content = wrapper.firstElementChild;
+    content.type = "button";
+    content.title = label;
+    content.addEventListener("click", onClick);
+    const marker = new kmap.CustomOverlay({
+      position: new kmap.LatLng(position.lat, position.lng),
+      map: state.map,
+      content,
+      xAnchor: 0.5,
+      yAnchor: 0.5,
+      clickable: true
     });
+    state.map._airMarkers.push(marker);
+    return marker;
   };
   const addCluster = (item, targetZoom, tier = "") => {
-    const label = `${item.name} ${item.count}`;
-    const marker = L.marker([item.lat, item.lng], { icon: L.divIcon({ className: "", html: `<div class="cluster-pin cluster-${tier}"><strong>${item.count}</strong><span>${item.name}</span></div>`, iconSize: [66, 50], iconAnchor: [33, 25] }) }).addTo(state.map._airMarkers);
-    marker.bindTooltip(`${item.name} · 학교 ${item.count}개`, { direction: "top", offset: [0, -22] });
-    marker.on("click", () => state.map.flyTo([item.lat, item.lng], Math.max(targetZoom, state.map.getZoom() + 1.5), { duration: .9, easeLinearity: .16 }));
-    marker.getElement()?.setAttribute("aria-label", label);
+    addMarker(
+      item,
+      `<button type="button" class="cluster-pin cluster-${tier}" aria-label="${item.name} 학교 ${item.count}개"><strong>${item.count}</strong><span>${item.name}</span></button>`,
+      () => {
+        const next = new kmap.LatLng(item.lat, item.lng);
+        const zoom = Math.max(targetZoom, kakaoLevelToMapZoom(state.map.getLevel()) + 1);
+        state.map.panTo(next);
+        state.map.setLevel(mapZoomToKakaoLevel(zoom), { animate: true });
+      },
+      `${item.name} ${item.count}`
+    );
   };
   const addSchoolMarker = (school) => {
-    const marker = L.marker([school.lat, school.lng], { icon: L.divIcon({ className: "", html: `<div class="school-pin"></div>`, iconSize: [32, 32], iconAnchor: [16, 16] }) }).addTo(state.map._airMarkers);
-    marker.bindTooltip(school.name, { direction: "top", offset: [0, -14] });
-    marker.on("click", () => selectSchool(school.id));
-    marker.getElement()?.setAttribute("aria-label", school.name);
+    addMarker(
+      school,
+      `<button type="button" class="school-pin" aria-label="${school.name}"></button>`,
+      () => selectSchool(school.id),
+      school.name
+    );
   };
   const drawSchools = (schools, zoom) => {
     if (zoom >= 17) return schools.forEach(addSchoolMarker);
     const buckets = new Map();
     schools.forEach((school) => {
-      const point = state.map.project([school.lat, school.lng], zoom); const key = `${Math.round(point.x / 44)}:${Math.round(point.y / 44)}`;
-      const bucket = buckets.get(key) || []; bucket.push(school); buckets.set(key, bucket);
+      const scale = zoom >= 16 ? 260 : 150;
+      const key = `${Math.round(school.lat * scale)}:${Math.round(school.lng * scale)}`;
+      const bucket = buckets.get(key) || [];
+      bucket.push(school);
+      buckets.set(key, bucket);
     });
     buckets.forEach((bucket) => {
       if (bucket.length === 1) return addSchoolMarker(bucket[0]);
@@ -456,14 +532,41 @@ function initMap() {
       addCluster({ ...center, name: "인근 학교", count: bucket.length }, Math.min(18, zoom + 2), "nearby");
     });
   };
-  state.map.on("zoomend moveend", draw); draw();
+  const draw = () => {
+    cancelAnimationFrame(drawFrame);
+    drawFrame = requestAnimationFrame(() => {
+      const center = state.map.getCenter();
+      const zoom = kakaoLevelToMapZoom(state.map.getLevel());
+      state.mapView = { center: [center.getLat(), center.getLng()], zoom };
+      persist("mapView", state.mapView);
+      clearMarkers();
+      const schools = filteredMapSchools().filter(visible);
+      if (zoom < 8) clusterSchoolsByArea(schools, "province").forEach((item) => addCluster(item, 9, "region"));
+      else if (zoom < 11) clusterSchoolsByArea(schools, "city").forEach((item) => addCluster(item, 12, "city"));
+      else if (zoom < 13) clusterSchoolsByArea(schools, "district").forEach((item) => addCluster(item, 14, "district"));
+      else if (zoom < 16) {
+        const neighborhoods = clusterSchoolsByArea(schools, "neighborhood");
+        if (neighborhoods.length) neighborhoods.forEach((item) => addCluster(item, 17, "neighborhood"));
+        else drawSchools(schools, zoom);
+      }
+      else drawSchools(schools, zoom);
+    });
+  };
+  kmap.event.addListener(state.map, "idle", draw);
+  draw();
 }
 function selectSchool(id) {
   state.selectedSchool = id; state.schoolPostLimit = 3; state.mapDetailOpen = true;
   const school = state.schools.find((item) => item.id === id);
   if (!school) return;
   const posts = state.posts.filter((post) => post.school === school.name);
-  if (state.map && school) state.map.panTo([school.lat, school.lng], { animate: true, duration: .45 });
+  if (state.map && school) {
+    const kmap = window.kakao?.maps;
+    if (kmap) {
+      const next = new kmap.LatLng(school.lat, school.lng);
+      state.map.panTo(next);
+    }
+  }
   $(".school-detail")?.remove();
   $(".map-layout")?.insertAdjacentHTML("beforeend", `<aside class="school-detail"><div class="school-preview">${schoolDetailMarkup(school, posts)}</div></aside>`);
   lucide();
@@ -540,7 +643,8 @@ function renderComments() {
 
 function renderProfile(author = state.profile.nickname) {
   const own = author === state.profile.nickname; const uploaded = state.posts.filter((post) => post.author === author); const user = getUserProfile(author); state.viewedProfile = author;
-  $("#app").innerHTML = `<section class="profile-page"><div class="profile-tools">${own ? `<button class="icon-button" data-action="open-settings" aria-label="설정">${icon("settings")}</button>` : `<div class="toolbar"><button class="icon-button follow-icon ${state.following.includes(author) ? "active" : ""}" data-action="toggle-follow" data-author="${author}" aria-label="팔로우">${icon(state.following.includes(author) ? "user-check" : "user-plus")}</button><button class="icon-button" data-action="dm-author" data-author="${author}" aria-label="메시지">${icon("send")}</button></div>`}</div>
+  const backButton = !own && state.profileReturn ? `<button class="icon-button" data-action="profile-back" aria-label="이전 화면">${icon("chevron-left")}</button>` : "";
+  $("#app").innerHTML = `<section class="profile-page"><div class="profile-tools">${own ? `<button class="icon-button" data-action="open-settings" aria-label="설정">${icon("settings")}</button>` : `<div class="toolbar">${backButton}<button class="icon-button follow-icon ${state.following.includes(author) ? "active" : ""}" data-action="toggle-follow" data-author="${author}" aria-label="팔로우">${icon(state.following.includes(author) ? "user-check" : "user-plus")}</button><button class="icon-button" data-action="dm-author" data-author="${author}" aria-label="메시지">${icon("send")}</button></div>`}</div>
     <div class="profile-main">${user.avatar ? `<button class="avatar profile-avatar image-avatar" data-action="view-avatar" data-src="${user.avatar}" data-title="${author}"><img src="${user.avatar}" alt="${author}" /></button>` : `<span class="avatar profile-avatar">${author.slice(0, 1)}</span>`}<h1>${author}</h1><strong>${user.school} · ${user.grade} ${user.className}</strong><small>${user.role}${user.position ? ` · ${user.position}` : ""}</small>
       <div class="stat-row"><div class="stat"><strong>${uploaded.length}</strong><small>자료 수</small></div><div class="stat"><strong>${profileScore(author)}</strong><small>자료 평판 / 10</small></div></div>
     </div>
@@ -821,8 +925,28 @@ document.addEventListener("click", (event) => {
   if (action === "reply-comment") { state.replyTarget = { comment: target.dataset.comment, user: target.dataset.user }; $("#commentInput").value = `@${target.dataset.user} `; return $("#commentInput").focus(); }
   if (action === "like-comment") { const post = state.posts.find((item) => item.id === state.activePost); const comment = post.comments.find((item) => item.id === target.dataset.comment); comment.liked = !comment.liked; comment.likes += comment.liked ? 1 : -1; saveAll(); return renderComments(); }
   if (action === "like-reply") { const post = state.posts.find((item) => item.id === state.activePost); const comment = post.comments.find((item) => item.id === target.dataset.comment); const reply = comment.replies.find((item) => item.id === target.dataset.reply); reply.liked = !reply.liked; reply.likes += reply.liked ? 1 : -1; saveAll(); return renderComments(); }
-  if (action === "view-author") { state.view = "profile"; updateChrome(); return renderProfile(target.dataset.author); }
-  if (action === "toggle-follow") { const author = target.dataset.author; state.following = state.following.includes(author) ? state.following.filter((item) => item !== author) : [...state.following, author]; saveAll(); return state.view === "profile" ? renderProfile(author) : refreshPostCard(target.closest(".post-card")?.id); }
+  if (action === "view-author") {
+    state.profileReturn = state.view === "profile" ? state.profileReturn : { view: state.view, selectedSchool: state.selectedSchool, mapDetailOpen: state.mapDetailOpen, feedSchool: state.feedSchool };
+    state.view = "profile"; updateChrome(); return renderProfile(target.dataset.author);
+  }
+  if (action === "profile-back") {
+    const back = state.profileReturn || { view: "home" };
+    state.profileReturn = null;
+    state.view = back.view || "home";
+    state.selectedSchool = back.selectedSchool || state.selectedSchool;
+    state.mapDetailOpen = back.mapDetailOpen ?? state.mapDetailOpen;
+    state.feedSchool = back.feedSchool || "";
+    updateChrome();
+    return render();
+  }
+  if (action === "toggle-follow") {
+    const author = target.dataset.author;
+    const wasFollowing = state.following.includes(author);
+    state.following = wasFollowing ? state.following.filter((item) => item !== author) : [...state.following, author];
+    toast(wasFollowing ? "팔로우를 취소했습니다" : "팔로우했습니다", wasFollowing ? "message" : "success");
+    saveAll();
+    return state.view === "profile" ? renderProfile(author) : refreshPostCard(target.closest(".post-card")?.id);
+  }
   if (action === "dm-author") return openDm(target.dataset.author);
   if (action === "open-post") { dialogs.collection.open && dialogs.collection.close(); state.view = "feed"; state.feedQuery = ""; state.feedTags = []; updateChrome(); renderFeed(); setTimeout(() => document.getElementById(target.dataset.id)?.scrollIntoView({ behavior: "smooth" }), 0); return; }
   if (action === "expand-post") { const card = document.getElementById(target.dataset.id); card?.querySelector(".post-text")?.classList.remove("collapsed"); target.remove(); return; }
@@ -1057,12 +1181,15 @@ async function searchSchools(query) {
 $("#schoolSuggestions")?.addEventListener("click", (event) => { const button = event.target.closest("[data-school]"); if (!button) return; $("#schoolAutocomplete").value = button.dataset.school; $("#schoolSuggestions").classList.remove("open"); });
 
 function normalizeOfficialSchool(row) {
-  const lat = Number(row.latitude || row.LATITUDE || row.위도); const lng = Number(row.longitude || row.LONGITUDE || row.경도);
+  const read = (...keys) => keys.map((key) => row[key]).find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
+  const lat = Number(read("latitude", "LATITUDE", "위도")); const lng = Number(read("longitude", "LONGITUDE", "경도"));
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const name = row.schoolNm || row.SCHOOL_NM || row.SCHUL_NM || row.학교명;
-  const rawType = row.schoolSe || row.SCHOOL_SE || row.SCHUL_KND_SC_NM || row.학교급구분 || row.학교종류명 || name;
+  const name = read("schoolNm", "SCHOOL_NM", "SCHUL_NM", "학교명");
+  const rawType = read("schoolSe", "SCHOOL_SE", "SCHUL_KND_SC_NM", "학교급구분", "학교종류명") || name;
   const type = schoolTypeOf(rawType);
-  const address = row.rdnmadr || row.RDNMADR || row.소재지도로명주소 || row.lnmadr || row.LNMADR || row.소재지지번주소 || row.ORG_RDNMA || "";
+  const roadAddress = read("rdnmadr", "RDNMADR", "소재지도로명주소", "ORG_RDNMA");
+  const lotAddress = read("lnmadr", "LNMADR", "소재지지번주소");
+  const address = roadAddress || lotAddress;
   if (!name || !OFFICIAL_SCHOOL_TYPES.includes(type)) return null;
   return {
     id: `official-${row.schoolId || name}-${lat}-${lng}`.replace(/\s+/g, "-"),
@@ -1070,6 +1197,7 @@ function normalizeOfficialSchool(row) {
     type,
     location: address.split(/\s+/).slice(0, 3).join(" ") || address,
     address,
+    areaAddress: lotAddress || address,
     lat,
     lng,
     members: 0,
@@ -1078,15 +1206,92 @@ function normalizeOfficialSchool(row) {
     revisions: []
   };
 }
+
+function parseCsv(text) {
+  const rows = []; let row = []; let value = ""; let quoted = false;
+  const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]; const next = source[i + 1];
+    if (char === '"' && quoted && next === '"') { value += '"'; i++; continue; }
+    if (char === '"') { quoted = !quoted; continue; }
+    if (char === "," && !quoted) { row.push(value); value = ""; continue; }
+    if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") i++;
+      row.push(value); value = "";
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      continue;
+    }
+    value += char;
+  }
+  if (value || row.length) { row.push(value); if (row.some((cell) => cell.trim())) rows.push(row); }
+  const headers = rows.shift()?.map((header) => header.trim()) || [];
+  return rows.map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] || ""])));
+}
+
+async function loadOfficialSchoolCsv() {
+  const publicDataPk = runtimeConfig.schoolStandardPublicDataPk || "15021148";
+  const publicDataDetailPk = runtimeConfig.schoolStandardDetailPk || "uddi:9793c2f7-4dba-49ed-bf64-8c6cfd56102a";
+  const metaUrl = runtimeConfig.schoolFileMetaUrl || "https://www.data.go.kr/tcs/dss/selectFileDataDownload.do?recommendDataYn=Y";
+  const downloadUrl = runtimeConfig.schoolFileDownloadUrl || "https://www.data.go.kr/cmm/cmm/fileDownload.do";
+  const meta = await (await fetch(`${metaUrl}&publicDataPk=${encodeURIComponent(publicDataPk)}&publicDataDetailPk=${encodeURIComponent(publicDataDetailPk)}`)).json();
+  if (!meta?.status || !meta.atchFileId || !meta.fileDetailSn) throw new Error("SCHOOL_CSV_META_FAILED");
+  const file = await fetch(`${downloadUrl}?atchFileId=${encodeURIComponent(meta.atchFileId)}&fileDetailSn=${encodeURIComponent(meta.fileDetailSn)}`);
+  if (!file.ok) throw new Error("SCHOOL_CSV_DOWNLOAD_FAILED");
+  return parseCsv(await file.text()).map(normalizeOfficialSchool).filter(Boolean);
+}
+
+function normalizeSchoolKeyText(value = "") {
+  return String(value).replace(/\([^)]*\)/g, "").replace(/\s+/g, "").replace(/[^\w가-힣]/g, "").toLowerCase();
+}
+
+function schoolCanonicalKey(school) {
+  const name = normalizeSchoolKeyText(school.name);
+  const type = normalizeSchoolKeyText(school.type);
+  const areas = schoolAreaParts(school);
+  const area = normalizeSchoolKeyText([areas.province, areas.city, areas.district].filter(Boolean).join(" "));
+  return `${name}|${type}|${area}`;
+}
+
+function mergeOfficialSchools(schools, status = "official") {
+  if (!schools.length) return false;
+  const byKey = new Map();
+  [...state.schools, ...schools].forEach((school) => {
+    const key = schoolCanonicalKey(school);
+    const previous = byKey.get(key);
+    byKey.set(key, previous ? {
+      ...previous,
+      ...school,
+      members: Math.max(previous.members || 0, school.members || 0),
+      rating: Math.max(previous.rating || 0, school.rating || 0),
+      wiki: previous.wiki || school.wiki,
+      revisions: previous.revisions?.length ? previous.revisions : (school.revisions || [])
+    } : school);
+  });
+  state.schools = [...byKey.values()];
+  state.schoolDataStatus = status;
+  persist("schools", state.schools);
+  return true;
+}
 async function loadNationalSchools() {
   const key = runtimeConfig.schoolLocationServiceKey || "";
-  if (!key) { state.schoolDataStatus = "needs-key"; return; }
   state.schoolDataStatus = "loading";
+  if (!key) {
+    try {
+      if (mergeOfficialSchools(await loadOfficialSchoolCsv(), "official-file")) return;
+    } catch (error) {
+      console.warn("Failed to load official school CSV", error);
+    }
+    state.schoolDataStatus = "needs-key";
+    return;
+  }
   try {
     const base = runtimeConfig.schoolLocationApiUrl || "https://api.data.go.kr/openapi/tn_pubr_public_elesch_mskul_lc_api";
-    const numOfRows = Number(runtimeConfig.schoolLocationPageSize || 5000);
+    const numOfRows = Math.min(1000, Math.max(1, Number(runtimeConfig.schoolLocationPageSize || 1000)));
     const firstUrl = `${base}?serviceKey=${encodeURIComponent(key)}&pageNo=1&numOfRows=${numOfRows}&type=json`;
     const first = await (await fetch(firstUrl)).json();
+    const resultCode = first.response?.header?.resultCode;
+    if (resultCode && !["00", "NORMAL_CODE"].includes(resultCode)) throw new Error(first.response?.header?.resultMsg || resultCode);
     const body = first.response?.body || {};
     const total = Number(body.totalCount || 0);
     const collect = (json) => {
@@ -1099,15 +1304,14 @@ async function loadNationalSchools() {
       const json = await (await fetch(`${base}?serviceKey=${encodeURIComponent(key)}&pageNo=${pageNo}&numOfRows=${numOfRows}&type=json`)).json();
       schools.push(...collect(json));
     }
-    if (schools.length) {
-      const byId = new Map(state.schools.map((school) => [school.id, school]));
-      schools.forEach((school) => byId.set(school.id, { ...(byId.get(school.id) || {}), ...school }));
-      state.schools = [...byId.values()];
-      state.schoolDataStatus = "official";
-      persist("schools", state.schools);
-    } else state.schoolDataStatus = "sample";
+    if (!mergeOfficialSchools(schools, "official")) state.schoolDataStatus = "sample";
   } catch (error) {
     console.warn("Failed to load national school locations", error);
+    try {
+      if (mergeOfficialSchools(await loadOfficialSchoolCsv(), "official-file")) return;
+    } catch (fallbackError) {
+      console.warn("Failed to load official school CSV fallback", fallbackError);
+    }
     state.schoolDataStatus = "sample";
   }
 }

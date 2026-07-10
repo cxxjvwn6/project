@@ -928,6 +928,36 @@ button:active .air-icon { transform: scale(.9); }
   box-shadow: 0 8px 22px rgba(0,0,0,.42);
 }
 .school-pin::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #17130f; }
+.cluster-pin,
+.school-pin {
+  appearance: none;
+  border-style: solid;
+  cursor: pointer;
+  font: inherit;
+  transition: transform .22s cubic-bezier(.22,.8,.2,1), box-shadow .22s ease, background-color .22s ease;
+}
+.cluster-pin:focus-visible,
+.school-pin:focus-visible { outline: 2px solid #f5efe4; outline-offset: 3px; }
+.map-sdk-notice {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  z-index: 4;
+  width: min(360px, calc(100% - 36px));
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  border: 1px solid rgba(245,239,228,.12);
+  border-radius: 18px;
+  color: var(--ivory);
+  background: rgba(17,17,15,.86);
+  box-shadow: 0 24px 80px rgba(0,0,0,.42);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(22px);
+}
+.map-sdk-notice .brand-mark { width: 46px; height: 46px; }
+.map-sdk-notice small { color: #aaa298; line-height: 1.55; }
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip { color: var(--ivory); background: #171613; box-shadow: 0 16px 40px rgba(0,0,0,.42); }
 .leaflet-popup-content { margin: 14px; }
@@ -1283,6 +1313,7 @@ button:active .air-icon { transform: scale(.9); }
   flex-wrap: wrap;
   margin-top: 12px;
 }
+.school-hub-button { margin-top: 16px; }
 .school-contributors {
   display: grid;
   gap: 7px;
@@ -1416,10 +1447,9 @@ button:active .air-icon { transform: scale(.9); }
   .map-active .shell { padding-bottom: 72px; }
   .map-layout,
   #realMap { min-height: calc(100dvh - 72px); }
-  .school-detail { max-height: 40dvh; }
+  .school-detail { max-height: 62dvh; }
   .map-school-list { bottom: 82px; max-height: 26dvh; }
-  .school-detail .wiki-section:nth-of-type(n+3) { display: none; }
-  .school-content { display: none; }
+  .school-preview { max-height: 62dvh; }
   .leaflet-control-attribution { margin-bottom: calc(40dvh + 18px) !important; }
 }
 
