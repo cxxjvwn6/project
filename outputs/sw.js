@@ -1,5 +1,5 @@
-const CACHE = "airboard-v41";
-const ASSETS = ["./", "./index.html", "./config.js?v=41", "./styles.css?v=41", "./icons.js?v=41", "./app.js?v=41", "./manifest.json?v=41", "./airboard-logo.png", "./noise-texture.png"];
+const CACHE = "airboard-v44";
+const ASSETS = ["./", "./index.html", "./config.js?v=44", "./styles.css?v=44", "./icons.js?v=44", "./app.js?v=44", "./manifest.json?v=44", "./airboard-logo.png", "./noise-texture.png"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

@@ -7,20 +7,20 @@
     <title>AirBoard</title>
     <meta name="application-name" content="AirBoard" />
     <meta name="description" content="AirBoard 학생 생활 플랫폼" />
-    <link rel="icon" type="image/png" href="./airboard-logo.png?v=41" />
-    <link rel="apple-touch-icon" href="./airboard-logo.png?v=41" />
-    <link rel="manifest" href="./manifest.json?v=41" />
-    <link rel="stylesheet" href="./styles.css?v=41" />
-    <script src="./config.js?v=41"></script>
-    <script src="./icons.js?v=41" defer></script>
-    <script src="./app.js?v=41" defer></script>
+    <link rel="icon" type="image/png" href="./airboard-logo.png?v=44" />
+    <link rel="apple-touch-icon" href="./airboard-logo.png?v=44" />
+    <link rel="manifest" href="./manifest.json?v=44" />
+    <link rel="stylesheet" href="./styles.css?v=44" />
+    <script src="./config.js?v=44"></script>
+    <script src="./icons.js?v=44" defer></script>
+    <script src="./app.js?v=44" defer></script>
   </head>
   <body>
-    <div id="loading" class="loading-screen"><div class="loading-stack"><span class="logo-orb"><img src="./airboard-logo.png?v=41" alt="" /></span><span class="skeleton skeleton-title"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line short"></span></div></div>
+    <div id="loading" class="loading-screen"><div class="loading-stack"><span class="logo-orb"><img src="./airboard-logo.png?v=44" alt="" /></span><span class="skeleton skeleton-title"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line short"></span></div></div>
     <div class="shell">
       <header id="homeToolbar" class="topbar">
         <button class="brand" data-action="go" data-view="home" aria-label="AirBoard">
-          <span class="brand-mark"><img src="./airboard-logo.png?v=41" alt="" /></span><strong>AirBoard</strong>
+          <span class="brand-mark"><img src="./airboard-logo.png?v=44" alt="" /></span><strong>AirBoard</strong>
         </button>
         <div class="top-actions">
           <button class="icon-button" data-action="open-dm" aria-label="메시지">
@@ -58,14 +58,8 @@
     <dialog id="loginDialog" class="modal auth-modal">
       <form method="dialog" class="modal-panel" id="loginForm" novalidate>
         <div class="modal-head"><h2>Log In</h2><button type="button" class="icon-button" data-action="close-login" aria-label="닫기"><i data-lucide="x"></i></button></div>
-        <div class="social-grid">
-          <button type="button" class="social google" data-action="oauth" data-provider="Google">Google</button>
-          <button type="button" class="social apple" data-action="oauth" data-provider="Apple">Apple</button>
-          <button type="button" class="social kakao" data-action="oauth" data-provider="Kakao">Kakao</button>
-        </div>
-        <div class="divider"><span>또는</span></div>
-        <label>이메일<input name="email" type="email" required autocomplete="email" /></label>
-        <label>비밀번호<span class="password-field"><input name="password" type="password" required autocomplete="current-password" /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label>
+        <label>이메일<input name="email" type="email" required autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" /></label>
+        <label>비밀번호<span class="password-field"><input name="password" type="password" required autocomplete="current-password" autocapitalize="off" spellcheck="false" /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label>
         <p id="loginError" class="form-error"></p>
         <button class="primary wide" value="default">로그인</button>
         <button type="button" class="text-button" data-action="switch-signup">계정 만들기</button>
@@ -75,12 +69,11 @@
     <dialog id="signupDialog" class="modal auth-modal">
       <form method="dialog" class="modal-panel" id="signupForm" novalidate>
         <div class="modal-head"><h2>Sign Up</h2><button type="button" class="icon-button" data-action="close-signup" aria-label="닫기"><i data-lucide="x"></i></button></div>
-        <label>이메일<span class="inline-field"><input name="email" type="email" required /><button type="button" class="tiny" data-action="send-verification">인증 코드 발송</button></span></label>
-        <label>이메일 인증<span class="inline-field"><input name="verificationCode" inputmode="numeric" placeholder="인증 코드" required /><button type="button" class="tiny" data-action="verify-email">인증</button></span></label>
-        <div class="two-grid"><label>비밀번호<span class="password-field"><input name="password" type="password" required /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label><label>비밀번호 확인<span class="password-field"><input name="confirm" type="password" required /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label></div>
-        <label>닉네임<input name="nickname" required /></label>
+        <label>이메일<input name="email" type="email" required autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" /></label>
+        <div class="two-grid"><label>비밀번호<span class="password-field"><input name="password" type="password" required autocomplete="new-password" autocapitalize="off" spellcheck="false" /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label><label>비밀번호 확인<span class="password-field"><input name="confirm" type="password" required autocomplete="new-password" autocapitalize="off" spellcheck="false" /><button type="button" class="icon-button" data-action="toggle-password" aria-label="비밀번호 보기"><i data-lucide="eye"></i></button></span></label></div>
+        <div class="two-grid"><label>계정 아이디<span class="inline-field"><input name="accountId" placeholder="예: airboard_01" required inputmode="email" autocapitalize="off" spellcheck="false" /><button type="button" class="tiny" data-action="check-nickname">중복 확인</button></span></label><label>이름<input name="displayName" placeholder="표시 이름" required /></label></div>
         <label class="autocomplete-field">학교<input id="schoolAutocomplete" name="school" placeholder="예: 내정중학교" autocomplete="off" required /><div id="schoolSuggestions" class="suggestions"></div></label>
-        <div class="two-grid"><label>학년<select name="grade"><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label><label>반<input name="className" placeholder="예: 1반" /></label></div>
+        <div class="two-grid"><label>학년<select name="grade"><option>초1</option><option>초2</option><option>초3</option><option>초4</option><option>초5</option><option>초6</option><option selected>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label><label>반<input name="className" inputmode="numeric" placeholder="선택 입력" /></label></div>
         <div class="two-grid"><label>역할<input name="role" placeholder="예: 축구부, 물리동아리" /></label><label>직책<input name="position" placeholder="예: 학생회 홍보부장, 1-7 부회장" /></label></div>
         <p id="signupError" class="form-error"></p>
         <button class="primary wide" value="default">가입</button>
@@ -112,10 +105,10 @@
       <form method="dialog" class="modal-panel" id="profileEditForm">
         <div class="modal-head"><h2>프로필 수정</h2><button type="button" class="icon-button" data-action="close-profile-edit" aria-label="취소"><i data-lucide="x"></i></button></div>
         <label>프로필 사진<input name="avatar" type="file" accept="image/*" /></label>
-        <label>닉네임<input name="nickname" /></label>
+        <div class="two-grid"><label>계정 아이디<span class="inline-field"><input name="accountId" inputmode="email" autocapitalize="off" spellcheck="false" /><button type="button" class="tiny" data-action="check-nickname">중복 확인</button></span></label><label>이름<input name="displayName" /></label></div>
         <label>자기소개<textarea name="bio" rows="3"></textarea></label>
         <label>학교<input name="school" /></label>
-        <div class="two-grid"><label>학년<select name="grade"><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label><label>반<input name="className" /></label></div>
+        <div class="two-grid"><label>학년<select name="grade"><option>초1</option><option>초2</option><option>초3</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label><label>반<input name="className" inputmode="numeric" placeholder="선택 입력" /></label></div>
         <div class="two-grid"><label>역할<input name="role" /></label><label>직책<input name="position" /></label></div>
         <div class="modal-actions"><button type="button" data-action="close-profile-edit" class="ghost">취소</button><button value="default" class="primary">저장</button></div>
       </form>

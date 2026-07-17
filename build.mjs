@@ -4,8 +4,6 @@ rmSync("dist", { recursive: true, force: true });
 cpSync("outputs", "dist", { recursive: true });
 
 const config = {
-  authBaseUrl: process.env.AIRBOARD_AUTH_BASE_URL || "",
-  authRedirectUri: process.env.AIRBOARD_AUTH_REDIRECT_URI || "",
   kakaoMapJavaScriptKey: process.env.KAKAO_MAP_JAVASCRIPT_KEY || process.env.AIRBOARD_KAKAO_MAP_JAVASCRIPT_KEY || "9d567a6ad7d695707baa9c15623d8315",
   naverMapClientId: process.env.NAVER_MAP_CLIENT_ID || process.env.AIRBOARD_NAVER_MAP_CLIENT_ID || "",
   schoolLocationServiceKey: process.env.AIRBOARD_SCHOOL_LOCATION_SERVICE_KEY || "",

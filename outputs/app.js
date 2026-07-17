@@ -73,10 +73,9 @@ const state = {
   mapDetailOpen: false,
   schoolDataStatus: "sample",
   schoolPostLimit: 3,
-  profile: restore("profile", { nickname: "민서", avatar: "", bio: "", school: "내정중학교", grade: "중2", className: "3반", role: "물리동아리", position: "부장", highlights: [] }),
-  accounts: restore("accounts", [{ email: "demo@airboard.kr", password: "airboard123", nickname: "민서", verified: true }]),
-  session: restore("session", { email: "demo@airboard.kr" }),
-  verification: { email: "", code: "", verified: false },
+  profile: restore("profile", { accountId: "", displayName: "", nickname: "", avatar: "", bio: "", school: "", grade: "중1", className: "", role: "", position: "", highlights: [] }),
+  accounts: restore("accounts", []),
+  session: restore("session", null),
   theme: restore("theme", "dark"),
   language: restore("language", "ko"),
   watchHistory: restore("watchHistory", []),
@@ -88,6 +87,7 @@ const state = {
   activeHighlight: { group: 0, image: 0 },
   activeViewer: { images: [], index: 0, title: "", scale: 1 },
   recentSearches: restore("recentSearches", []),
+  nicknameCheck: { value: "", ok: false },
   feedSchool: "",
   schedules: restore("schedules", [
     { id: "s1", title: "영어 수행평가 초안", date: iso(today), start: "18:30", end: "19:20", memo: "발표 구조 정리" },
@@ -118,14 +118,14 @@ state.schools = [
     type: normalizeSchoolType({ ...school, name: canonical?.name || school.name })
   };
 });
+if (state.session?.email === "demo@airboard.kr") {
+  state.session = null;
+  state.accounts = state.accounts.filter((account) => account.email !== "demo@airboard.kr");
+}
+state.profile = { accountId: state.profile.accountId || state.profile.nickname || "", displayName: state.profile.displayName || state.profile.nickname || "", avatarZoom: 1, avatarX: 50, avatarY: 50, ...state.profile };
 if (!SCHOOL_TYPES.includes(state.mapSchoolType)) state.mapSchoolType = "전체";
 const realtime = "BroadcastChannel" in window ? new BroadcastChannel("airboard-dm") : null;
 const runtimeConfig = window.AIRBOARD_CONFIG || {};
-const oauthConfig = {
-  Google: { slug: "google" },
-  Apple: { slug: "apple" },
-  Kakao: { slug: "kakao" }
-};
 
 function schoolTypeOf(value = "") {
   const text = String(value);
@@ -212,7 +212,8 @@ function profileScore(author = state.profile.nickname) {
   return avg(scores).toFixed(1);
 }
 function getUserProfile(author) { return author === state.profile.nickname ? state.profile : (userProfiles[author] || { school: state.posts.find((post) => post.author === author)?.school || "", grade: "", className: "", role: "", position: "", avatar: "", highlights: [] }); }
-function totalUnread() { return state.conversations.reduce((sum, item) => sum + Math.max(0, Number(item.unread) || 0), 0); }
+function visibleConversations() { return state.conversations.filter((item) => (item.messages || []).length > 0); }
+function totalUnread() { return visibleConversations().reduce((sum, item) => sum + Math.max(0, Number(item.unread) || 0), 0); }
 function unreadLabel(count) { return count > 99 ? "99+" : String(count); }
 function markConversationRead(conversation) {
   if (!conversation || !conversation.unread) return false;
@@ -223,12 +224,14 @@ function updateChrome() {
   document.documentElement.lang = state.language === "en" ? "en" : "ko";
   document.body.dataset.language = state.language;
   $("#homeToolbar").classList.toggle("hidden", state.view !== "home");
+  $(".bottom-nav")?.classList.toggle("hidden", !state.session?.email);
+  $("[data-action='open-dm']")?.classList.toggle("hidden", !state.session?.email);
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === state.view));
   const badge = $("#dmBadge"); const unread = totalUnread(); const previous = Number(badge.dataset.count || 0);
   badge.textContent = unreadLabel(unread); badge.dataset.count = unread; badge.classList.toggle("show", unread > 0);
   badge.setAttribute("aria-label", unread ? `읽지 않은 메시지 ${unreadLabel(unread)}개` : "읽지 않은 메시지 없음");
   if (unread > previous) { badge.classList.remove("badge-pop"); requestAnimationFrame(() => badge.classList.add("badge-pop")); }
-  $(".profile-button span").textContent = state.session?.email ? state.profile.nickname : tr("로그인");
+  $(".profile-button span").textContent = state.session?.email ? (state.profile.displayName || state.profile.accountId || state.profile.nickname || "프로필") : tr("로그인");
   document.body.classList.toggle("light-mode", state.theme === "light");
   document.body.classList.toggle("map-active", state.view === "map");
 }
@@ -249,6 +252,7 @@ function render() {
   $("#app").classList.remove("view-enter"); requestAnimationFrame(() => $("#app").classList.add("view-enter"));
 }
 function navigate(view) {
+  if (!state.session?.email && view !== "home") { state.view = "home"; render(); return dialogs.login.showModal(); }
   track("navigation", { from: state.view, to: view });
   const change = () => { state.view = view; render(); };
   if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) document.startViewTransition(change);
@@ -299,22 +303,36 @@ function rankedSchools() {
 }
 
 function renderHome() {
+  if (!state.session?.email) {
+    $("#app").innerHTML = `
+      <section class="landing-screen">
+        <div class="landing-copy">
+          <span class="eyebrow">AirBoard</span>
+          <h1>학교별 학생 커뮤니티를 한곳에.</h1>
+          <p>우리 학교 게시글, 자료, 일정, 친구 메시지를 자연스럽게 이어주는 학생 전용 플랫폼입니다.</p>
+          <div class="hero-actions">
+            <button class="primary" data-action="open-signup">Sign Up</button>
+            <button class="ghost" data-action="open-login">Log In</button>
+          </div>
+        </div>
+        <div class="landing-panel">
+          <strong>시작하기</strong>
+          <div class="landing-list">
+            <span>${icon("school")}학교 AirBoard 참여</span>
+            <span>${icon("layers-3")}자료와 게시글 탐색</span>
+            <span>${icon("calendar")}일정 관리</span>
+          </div>
+        </div>
+      </section>`;
+    return;
+  }
   const agenda = currentAgenda();
   const dateTitle = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(agenda.today);
-  const mySchool = schoolStats(state.profile.school);
   $("#app").innerHTML = `
-    <section class="school-home-hero panel">
-      <div><span class="school-badge">${mySchool.school.type || "학교"}</span><h1>${state.profile.school} AirBoard</h1><p>${state.profile.grade} ${state.profile.className} · ${state.profile.role}${state.profile.position ? ` · ${state.profile.position}` : ""}</p></div>
-      <div class="school-home-actions"><button class="ghost" data-action="go" data-view="map">${icon("map")}학교 허브</button><button class="primary icon-primary" data-action="open-schedule" aria-label="일정 등록">${icon("plus")}</button></div>
-    </section>
-    ${sectionTitle(dateTitle)}
+    ${sectionTitle(dateTitle, `<button class="primary icon-primary" data-action="open-schedule" aria-label="일정 등록">${icon("plus")}</button>`)}
     <section class="schedule-columns home-agenda">
       <article class="panel"><div class="section-title"><h2>이번주</h2></div>${scheduleList(agenda.week)}</article>
       <article class="panel"><div class="section-title"><h2>다가오는 일정</h2></div>${scheduleList(agenda.upcoming)}</article>
-    </section>
-    <section class="school-home-grid">
-      <article class="panel school-mini-hub"><div class="section-title"><h2>${state.profile.school} 활동</h2></div><div class="school-stat-grid"><span><strong>${mySchool.posts.length}</strong><small>게시글</small></span><span><strong>${mySchool.resources.length}</strong><small>자료</small></span><span><strong>${mySchool.activeStudents.length}</strong><small>활동 학생</small></span></div><div class="tag-row">${(mySchool.trending.length ? mySchool.trending : ["#우리학교", "#수행평가", "#자료공유"]).map((tag) => `<span class="tag">${tag}</span>`).join("")}</div></article>
-      <article class="panel school-ranking"><div class="section-title"><h2>활동 학교</h2></div>${rankedSchools().map((school, index) => `<button class="rank-row" data-action="focus-school" data-id="${school.id}"><strong>${index + 1}</strong><span>${school.name}<small>${school.location} · 자료 ${school.resourceCount}개</small></span></button>`).join("")}</article>
     </section>
     <section class="panel calendar-panel">${calendarMarkup()}</section>`;
 }
@@ -443,7 +461,7 @@ function kakaoLevelToMapZoom(level) {
 function showKakaoMapNotice(message = "카카오 지도 API 키가 필요합니다.") {
   const map = $("#realMap");
   if (!map) return;
-  map.innerHTML = `<div class="map-sdk-notice"><span class="brand-mark"><img src="./airboard-logo.png?v=41" alt="" /></span><strong>${message}</strong><small>카카오 디벨로퍼스의 JavaScript SDK 도메인에 현재 사이트가 등록되어 있어야 지도가 표시됩니다.</small></div>`;
+  map.innerHTML = `<div class="map-sdk-notice"><span class="brand-mark"><img src="./airboard-logo.png?v=44" alt="" /></span><strong>${message}</strong><small>카카오 디벨로퍼스의 JavaScript SDK 도메인에 현재 사이트가 등록되어 있어야 지도가 표시됩니다.</small></div>`;
 }
 
 async function initMap() {
@@ -596,12 +614,11 @@ function renderFeed() {
     return matchesQuery && matchesTags && matchesSchool;
   });
   const posts = allPosts.slice(0, state.feedLimit);
-  const suggestions = [...new Set([
-    ...state.recentSearches,
-    ...state.posts.flatMap((post) => [post.school, post.author, ...(post.tags || [])])
-  ])].filter((item) => item && (!query || item.toLowerCase().includes(query))).slice(0, 8);
+  const suggestions = [...new Set(state.posts.flatMap((post) => post.tags || []))]
+    .filter((item) => item?.startsWith("#") && (!query || item.toLowerCase().includes(query)))
+    .slice(0, 8);
   $("#app").innerHTML = `
-    <div class="feed-search-wrap"><div class="feed-search">${icon("search")}<input id="feedSearch" value="${state.feedQuery}" placeholder="검색" autocomplete="off" /><button class="icon-button" data-action="open-saved" aria-label="저장한 목록">${icon("bookmark")}</button><button class="icon-button" data-action="open-watch-history" aria-label="시청 기록">${icon("history")}</button><button class="primary icon-primary" data-action="open-upload" aria-label="작성">${icon("plus")}</button></div>${suggestions.length ? `<div class="search-suggestions">${suggestions.map((item) => `<button data-action="search-suggestion" data-query="${item}">${icon(item.startsWith("#") ? "hash" : "clock")}<span>${item}</span></button>`).join("")}</div>` : ""}</div>
+    <div class="feed-search-wrap"><div class="feed-search">${icon("search")}<input id="feedSearch" value="${state.feedQuery}" placeholder="검색" autocomplete="off" /><button class="icon-button" data-action="open-saved" aria-label="저장한 목록">${icon("bookmark")}</button><button class="icon-button" data-action="open-watch-history" aria-label="시청 기록">${icon("history")}</button><button class="primary icon-primary" data-action="open-upload" aria-label="작성">${icon("plus")}</button></div>${suggestions.length ? `<div class="search-suggestions">${suggestions.map((item) => `<button data-action="search-suggestion" data-query="${item}">${icon("hash")}<span>${item}</span></button>`).join("")}</div>` : ""}</div>
     ${state.feedSchool ? `<div class="active-school-filter"><span>${state.feedSchool} AirBoard</span><button class="icon-button" data-action="clear-school-feed" aria-label="학교 필터 해제">${icon("x")}</button></div>` : ""}
     <div class="tag-row feed-tags">${["#중간고사", "#9모", "#수행평가", "#기말고사", "#필기", "#탐구"].map((tag) => `<button class="tag ${state.feedTags.includes(tag) ? "active" : ""}" data-action="filter-tag" data-tag="${tag}" aria-pressed="${state.feedTags.includes(tag)}">${tag}</button>`).join("")}${state.feedTags.length ? `<button class="tag tag-clear" data-action="clear-tags" aria-label="추천 태그 선택 해제">${icon("x")}</button>` : ""}</div>
     <section class="feed-layout"><div class="post-list">${posts.length ? posts.map(postMarkup).join("") : empty("search-x", "검색 결과가 없습니다.")}${allPosts.length > posts.length ? `<button class="tiny wide" data-action="more-feed">${icon("chevron-down")}</button>` : ""}</div></section>`;
@@ -659,6 +676,7 @@ function openDm(author) {
   track("dm_opened", { source: author ? "profile" : "launcher" });
   if (author && !state.conversations.some((item) => item.user === author)) state.conversations.unshift({ user: author, school: "AirBoard", online: true, unread: 0, typing: false, messages: [] });
   state.activeConversation = author || null;
+  if (author) markConversationRead(state.conversations.find((item) => item.user === author));
   state.dmOpen = true; renderDm();
 }
 function renderDm() {
@@ -671,7 +689,8 @@ function renderDm() {
     shell = document.createElement("div"); shell.className = "dm-shell";
     overlay.append(shell); document.body.append(overlay);
   }
-  shell.innerHTML = `<aside class="dm-sidebar ${showConversation ? "chat-open" : ""}"><div class="dm-head"><strong>메시지</strong><button class="icon-button" data-action="close-dm" aria-label="닫기">${icon("x")}</button></div><div class="dm-tabs"><button class="tiny dm-tab ${state.dmTab === "messages" ? "active" : ""}" data-action="dm-tab" data-tab="messages">대화</button><button class="tiny dm-tab ${state.dmTab === "requests" ? "active" : ""}" data-action="dm-tab" data-tab="requests">친구 요청</button></div><div class="conversation-list">${state.dmTab === "messages" ? state.conversations.map(conversationMarkup).join("") : requestMarkup()}</div></aside>${showConversation ? chatMarkup(conversation) : `<section class="chat-pane open">${empty("send", "대화를 선택하세요.")}</section>`}`;
+  const conversations = visibleConversations();
+  shell.innerHTML = `<aside class="dm-sidebar ${showConversation ? "chat-open" : ""}"><div class="dm-head"><strong>메시지</strong><button class="icon-button" data-action="close-dm" aria-label="닫기">${icon("x")}</button></div><div class="dm-tabs"><button class="tiny dm-tab ${state.dmTab === "messages" ? "active" : ""}" data-action="dm-tab" data-tab="messages">대화</button><button class="tiny dm-tab ${state.dmTab === "requests" ? "active" : ""}" data-action="dm-tab" data-tab="requests">친구 요청</button></div><div class="conversation-list">${state.dmTab === "messages" ? (conversations.length ? conversations.map(conversationMarkup).join("") : empty("send", "아직 대화가 없습니다.")) : requestMarkup()}</div></aside>${showConversation ? chatMarkup(conversation) : `<section class="chat-pane open">${empty("send", "대화를 선택하세요.")}</section>`}`;
   lucide(); setTimeout(() => { const box = $(".chat-messages"); if (box && wasNearBottom) box.scrollTop = box.scrollHeight; }, 0); updateChrome();
 }
 function conversationMarkup(item) {
@@ -690,9 +709,16 @@ function messageMarkup(message) {
   return `<div class="bubble ${message.from === "me" ? "me" : ""}">${content}<div class="message-meta">${message.time} · ${message.from === "me" ? (message.read ? "읽음" : "전송됨") : ""}</div></div>`;
 }
 function refreshConversationRow(item) {
+  if (!(item.messages || []).length) return;
   const row = $$(".conversation-row").find((node) => node.dataset.user === item.user);
   if (row) row.outerHTML = conversationMarkup(item);
-  else $(".conversation-list")?.insertAdjacentHTML("afterbegin", conversationMarkup(item));
+  else {
+    const list = $(".conversation-list");
+    if (list) {
+      if (!visibleConversations().some((conversation) => conversation.user !== item.user)) list.innerHTML = "";
+      list.insertAdjacentHTML("afterbegin", conversationMarkup(item));
+    }
+  }
   lucide();
 }
 function appendOpenMessage(item, message) {
@@ -711,53 +737,15 @@ function sendMessage(type, content, name = "") {
   item.messages.push(message); realtime?.postMessage({ kind: "message", conversation: item.user, message }); saveAll();
   appendOpenMessage(item, message); refreshConversationRow(item); $("#chatInput")?.focus();
 }
-function startOauth(provider) {
-  const config = oauthConfig[provider]; const authBaseUrl = String(runtimeConfig.authBaseUrl || "").replace(/\/$/, "");
-  if (!config || !authBaseUrl) return toast("소셜 로그인 서버 설정이 필요합니다.");
-  const oauthState = crypto.randomUUID(); const redirectUri = runtimeConfig.authRedirectUri || `${location.origin}${location.pathname}`;
-  sessionStorage.setItem("airboard:oauthState", oauthState); sessionStorage.setItem("airboard:oauthReturnView", state.view);
-  const params = new URLSearchParams({ redirect_uri: redirectUri, state: oauthState });
-  window.location.href = `${authBaseUrl}/oauth/${config.slug}/start?${params}`;
-}
-async function handleOauthCallback() {
-  const params = new URLSearchParams(location.search); const ticket = params.get("oauth_ticket"); const error = params.get("oauth_error");
-  if (!ticket && !error) return;
-  const cleanUrl = new URL(location.href); ["oauth_ticket", "oauth_error", "state"].forEach((key) => cleanUrl.searchParams.delete(key));
-  history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
-  if (error) { setFormError("#loginError", decodeURIComponent(error)); dialogs.login.showModal(); return; }
-  const expectedState = sessionStorage.getItem("airboard:oauthState"); const returnedState = params.get("state");
-  if (!expectedState || expectedState !== returnedState) { setFormError("#loginError", "로그인 요청을 확인할 수 없습니다. 다시 시도해주세요."); dialogs.login.showModal(); return; }
-  const authBaseUrl = String(runtimeConfig.authBaseUrl || "").replace(/\/$/, "");
-  try {
-    const response = await fetch(`${authBaseUrl}/oauth/session?ticket=${encodeURIComponent(ticket)}`, { credentials: "include", headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error("소셜 로그인 세션을 확인하지 못했습니다.");
-    const payload = await response.json(); const user = payload.user || payload;
-    if (!validEmail(user.email) || !user.provider || !user.subject) throw new Error("소셜 계정 정보가 올바르지 않습니다.");
-    let account = state.accounts.find((item) => item.provider === user.provider && item.providerSubject === user.subject) || state.accounts.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
-    if (!account) {
-      account = { email: user.email, nickname: user.name || user.email.split("@")[0], verified: true, provider: user.provider, providerSubject: user.subject };
-      state.accounts.push(account);
-      state.profile = { ...state.profile, nickname: account.nickname, avatar: user.avatar || state.profile.avatar };
-    } else {
-      account.provider = account.provider || user.provider; account.providerSubject = account.providerSubject || user.subject;
-    }
-    state.session = { email: account.email, provider: user.provider }; state.view = sessionStorage.getItem("airboard:oauthReturnView") || "home";
-    sessionStorage.removeItem("airboard:oauthState"); sessionStorage.removeItem("airboard:oauthReturnView"); saveAll(); toast(`${account.nickname}님, 환영합니다.`);
-  } catch (oauthError) {
-    setFormError("#loginError", oauthError.message || "소셜 로그인에 실패했습니다."); dialogs.login.showModal();
-  }
-}
 function requireAuthenticated() {
   if (state.session?.email) return true;
   dialogs.login.showModal(); toast("로그인이 필요합니다."); return false;
 }
 function endRemoteSession() {
-  const authBaseUrl = String(runtimeConfig.authBaseUrl || "").replace(/\/$/, "");
-  if (authBaseUrl) fetch(`${authBaseUrl}/oauth/logout`, { method: "POST", credentials: "include", keepalive: true }).catch(() => {});
 }
 
 function openProfileEdit() {
-  const form = $("#profileEditForm"); ["nickname", "bio", "school", "grade", "className", "role", "position"].forEach((name) => { form.elements[name].value = state.profile[name] || ""; }); dialogs.profileEdit.showModal();
+  const form = $("#profileEditForm"); ["accountId", "displayName", "bio", "school", "grade", "className", "role", "position"].forEach((name) => { if (form.elements[name]) form.elements[name].value = state.profile[name] || ""; }); state.nicknameCheck = { value: state.profile.accountId || "", ok: true }; dialogs.profileEdit.showModal();
 }
 async function handleHighlights(files) {
   const title = $("#highlightTitle")?.value?.trim() || `하이라이트 ${state.profile.highlights.length + 1}`;
@@ -803,12 +791,18 @@ function stepStory(direction) {
 }
 function setFormError(id, message) { const node = $(id); node.textContent = message; node.classList.remove("state-pop"); if (message) requestAnimationFrame(() => node.classList.add("state-pop")); }
 function validEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+function sanitizeAccountId(value = "") { return String(value).trim().toLowerCase().replace(/[^a-z0-9._]/g, "").slice(0, 24); }
+function accountIdAvailable(value) {
+  const id = sanitizeAccountId(value);
+  if (!id) return false;
+  if (id === sanitizeAccountId(state.profile.accountId || state.profile.nickname)) return true;
+  return !state.accounts.some((account) => sanitizeAccountId(account.accountId || account.nickname) === id);
+}
 const i18n = {
   en: {
     "로그인": "Log In", "가입": "Sign Up", "계정 만들기": "Create account", "이미 계정이 있어요": "I already have an account",
     "이메일": "Email", "비밀번호": "Password", "비밀번호 확인": "Confirm password", "비밀번호 보기": "Show password",
-    "이메일 인증": "Email verification", "인증 코드": "Verification code", "인증 코드 발송": "Send code", "인증": "Verify",
-    "닉네임": "Nickname", "학교": "School", "학년": "Grade", "반": "Class", "역할": "Role", "직책": "Position",
+    "계정 아이디": "Account ID", "학교": "School", "학년": "Grade", "반": "Class", "역할": "Role", "직책": "Position",
     "홈": "Home", "지도": "Map", "자료 및 커뮤니티": "Resources & Community", "프로필": "Profile", "빠른 실행": "Command menu",
     "일정 등록": "Add Schedule", "일정 제목": "Schedule title", "날짜": "Date", "시작 시간": "Start time", "종료 시간": "End time", "메모": "Memo", "등록": "Add",
     "이번주": "This Week", "다가오는 일정": "Upcoming", "등록된 일정이 없습니다.": "No schedules yet.",
@@ -885,24 +879,24 @@ document.addEventListener("click", (event) => {
   if (action === "close-schedule") return dialogs.schedule.close();
   if (action === "delete-schedule") { state.schedules = state.schedules.filter((item) => item.id !== target.dataset.id); saveAll(); return render(); }
   if (action === "prev-month" || action === "next-month") { state.calendarDate = new Date(state.calendarDate.getFullYear(), state.calendarDate.getMonth() + (action === "next-month" ? 1 : -1), 1); return renderHome(); }
-  if (action === "open-login") { if (state.session?.email) { state.view = "profile"; return render(); } return dialogs.login.showModal(); }
-  if (action === "close-login") return dialogs.login.close();
-  if (action === "close-signup") return dialogs.signup.close();
+  if (action === "open-login") { if (state.session?.email) { state.view = "profile"; return render(); } $("#loginForm")?.reset(); setFormError("#loginError", ""); return dialogs.login.showModal(); }
+  if (action === "open-signup") { if (state.session?.email) { state.view = "profile"; return render(); } $("#signupForm")?.reset(); state.nicknameCheck = { value: "", ok: false }; setFormError("#signupError", ""); return dialogs.signup.showModal(); }
+  if (action === "close-login") { $("#loginForm")?.reset(); setFormError("#loginError", ""); return dialogs.login.close(); }
+  if (action === "close-signup") { $("#signupForm")?.reset(); state.nicknameCheck = { value: "", ok: false }; setFormError("#signupError", ""); return dialogs.signup.close(); }
   if (action === "close-upload") return dialogs.upload.close();
   if (action === "close-profile-edit") return dialogs.profileEdit.close();
   if (action === "close-wiki-edit") return dialogs.wikiEdit.close();
   if (action === "toggle-password") { const input = target.closest(".password-field")?.querySelector("input"); if (input) input.type = input.type === "password" ? "text" : "password"; return; }
-  if (action === "send-verification") {
-    const email = $("#signupForm").elements.email.value.trim(); if (!validEmail(email)) return setFormError("#signupError", "이메일 형식이 올바르지 않습니다.");
-    state.verification = { email, code: String(Math.floor(100000 + Math.random() * 900000)), verified: false }; setFormError("#signupError", ""); return toast(`인증 코드: ${state.verification.code}`);
-  }
-  if (action === "verify-email") {
-    const form = $("#signupForm"); const email = form.elements.email.value.trim(); const code = form.elements.verificationCode.value.trim();
-    state.verification.verified = email === state.verification.email && code === state.verification.code; setFormError("#signupError", state.verification.verified ? "" : "인증 코드가 일치하지 않습니다."); return toast(state.verification.verified ? "이메일 인증이 완료되었습니다." : "인증에 실패했습니다.");
-  }
   if (action === "switch-signup") { dialogs.login.close(); return dialogs.signup.showModal(); }
   if (action === "switch-login") { dialogs.signup.close(); return dialogs.login.showModal(); }
-  if (action === "oauth") return startOauth(target.dataset.provider);
+  if (action === "check-nickname") {
+    const form = target.closest("form");
+    const id = sanitizeAccountId(form?.elements.accountId?.value || "");
+    if (form?.elements.accountId) form.elements.accountId.value = id;
+    const ok = accountIdAvailable(id);
+    state.nicknameCheck = { value: id, ok };
+    return toast(ok ? "사용 가능한 계정 아이디입니다." : "이미 사용 중인 계정 아이디입니다.", ok ? "success" : "error");
+  }
   if (action === "open-upload") { if (!requireAuthenticated()) return; return dialogs.upload.showModal(); }
   if (action === "filter-tag") {
     const tag = target.dataset.tag;
@@ -923,8 +917,8 @@ document.addEventListener("click", (event) => {
   if (action === "open-comments") { state.activePost = target.dataset.id; state.replyTarget = null; renderComments(); return dialogs.comments.showModal(); }
   if (action === "close-comments") return dialogs.comments.close();
   if (action === "reply-comment") { state.replyTarget = { comment: target.dataset.comment, user: target.dataset.user }; $("#commentInput").value = `@${target.dataset.user} `; return $("#commentInput").focus(); }
-  if (action === "like-comment") { const post = state.posts.find((item) => item.id === state.activePost); const comment = post.comments.find((item) => item.id === target.dataset.comment); comment.liked = !comment.liked; comment.likes += comment.liked ? 1 : -1; saveAll(); return renderComments(); }
-  if (action === "like-reply") { const post = state.posts.find((item) => item.id === state.activePost); const comment = post.comments.find((item) => item.id === target.dataset.comment); const reply = comment.replies.find((item) => item.id === target.dataset.reply); reply.liked = !reply.liked; reply.likes += reply.liked ? 1 : -1; saveAll(); return renderComments(); }
+  if (action === "like-comment") { const post = state.posts.find((item) => item.id === state.activePost); const comment = post.comments.find((item) => item.id === target.dataset.comment); comment.liked = !comment.liked; comment.likes += comment.liked ? 1 : -1; saveAll(); renderComments(); return refreshPostCard(post.id); }
+  if (action === "like-reply") { const post = state.posts.find((item) => item.id === state.activePost); const comment = post.comments.find((item) => item.id === target.dataset.comment); const reply = comment.replies.find((item) => item.id === target.dataset.reply); reply.liked = !reply.liked; reply.likes += reply.liked ? 1 : -1; saveAll(); renderComments(); return refreshPostCard(post.id); }
   if (action === "view-author") {
     state.profileReturn = state.view === "profile" ? state.profileReturn : { view: state.view, selectedSchool: state.selectedSchool, mapDetailOpen: state.mapDetailOpen, feedSchool: state.feedSchool };
     state.view = "profile"; updateChrome(); return renderProfile(target.dataset.author);
@@ -998,10 +992,15 @@ document.addEventListener("click", (event) => {
   if (action === "select-map-school") { selectSchool(target.dataset.id); $$(".map-school-row").forEach((row) => row.classList.toggle("selected", row.dataset.id === target.dataset.id)); return; }
   if (action === "open-school-hub") { const school = state.schools.find((item) => item.id === state.selectedSchool); state.feedSchool = school?.name || ""; state.view = "feed"; updateChrome(); return renderFeed(); }
   if (action === "view-school") { state.map?.closePopup(); return selectSchool(target.dataset.id); }
-  if (action === "open-dm") return openDm();
+  if (action === "open-dm") { if (!requireAuthenticated()) return; return openDm(); }
   if (action === "close-dm") { state.dmOpen = false; $(".dm-overlay")?.remove(); return; }
   if (action === "dm-tab") { state.dmTab = target.dataset.tab; if (state.dmTab !== "messages") state.activeConversation = null; return renderDm(); }
-  if (action === "open-conversation") { state.dmTab = "messages"; state.activeConversation = target.dataset.user; return renderDm(); }
+  if (action === "open-conversation") {
+    state.dmTab = "messages";
+    state.activeConversation = target.dataset.user;
+    markConversationRead(state.conversations.find((item) => item.user === state.activeConversation));
+    return renderDm();
+  }
   if (action === "dm-back") { state.activeConversation = null; return renderDm(); }
   if (action === "jump-new-messages") { const box = $(".chat-messages"); if (box) box.scrollTo({ top: box.scrollHeight, behavior: "smooth" }); target.classList.remove("show"); markConversationRead(state.conversations.find((item) => item.user === state.activeConversation)); updateChrome(); return; }
   if (action === "toggle-chat-menu") return $(".chat-menu")?.classList.toggle("open");
@@ -1024,6 +1023,11 @@ document.addEventListener("change", async (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches('#loginForm [name="email"], #signupForm [name="email"]')) event.target.value = event.target.value.replace(/[^\x00-\x7F]/g, "").trim().toLowerCase();
+  if (event.target.matches('#signupForm [name="accountId"], #profileEditForm [name="accountId"]')) {
+    event.target.value = sanitizeAccountId(event.target.value);
+    state.nicknameCheck = { value: "", ok: false };
+  }
   if (event.target.id === "feedSearch") { state.feedQuery = event.target.value; clearTimeout(window.feedSearchTimer); window.feedSearchTimer = setTimeout(() => { renderFeed(); const input = $("#feedSearch"); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); }, 120); return; }
   if (event.target.id === "mapSearch") {
     state.mapQuery = event.target.value;
@@ -1104,26 +1108,36 @@ document.addEventListener("submit", (event) => {
     state.schedules.push({ id: crypto.randomUUID(), ...data }); saveAll(); dialogs.schedule.close(); event.target.reset(); return renderHome();
   }
   if (event.target.id === "loginForm") {
-    const data = Object.fromEntries(new FormData(event.target)); if (!data.email || !data.password) return setFormError("#loginError", "이메일과 비밀번호를 입력해주세요."); if (!validEmail(data.email)) return setFormError("#loginError", "이메일 형식이 올바르지 않습니다."); const account = state.accounts.find((item) => item.email.toLowerCase() === data.email.trim().toLowerCase());
+    const data = Object.fromEntries(new FormData(event.target)); data.email = String(data.email || "").trim().toLowerCase(); if (!data.email || !data.password) return setFormError("#loginError", "이메일과 비밀번호를 입력해주세요."); if (!validEmail(data.email)) return setFormError("#loginError", "이메일 형식이 올바르지 않습니다."); const account = state.accounts.find((item) => item.email.toLowerCase() === data.email);
     if (!account) return setFormError("#loginError", "존재하지 않는 계정입니다.");
     if (account.password !== data.password) return setFormError("#loginError", "비밀번호가 일치하지 않습니다.");
     state.session = { email: account.email }; setFormError("#loginError", ""); saveAll(); dialogs.login.close(); updateChrome(); return toast("로그인되었습니다.");
   }
   if (event.target.id === "signupForm") {
-    const data = Object.fromEntries(new FormData(event.target)); const required = ["email", "password", "confirm", "nickname", "school", "grade", "className", "role", "position"];
-    if (required.some((key) => !String(data[key] || "").trim())) return setFormError("#signupError", "필수 항목이 비어 있습니다. 반, 역할, 직책을 모두 입력해주세요.");
+    const data = Object.fromEntries(new FormData(event.target)); data.email = String(data.email || "").trim().toLowerCase(); data.accountId = sanitizeAccountId(data.accountId); data.nickname = data.accountId;
+    const required = ["email", "password", "confirm", "accountId", "displayName", "school", "grade"];
+    if (required.some((key) => !String(data[key] || "").trim())) return setFormError("#signupError", "필수 항목이 비어 있습니다.");
     if (!validEmail(data.email)) return setFormError("#signupError", "이메일 형식이 올바르지 않습니다.");
     if (data.password !== data.confirm) return setFormError("#signupError", "비밀번호 확인이 일치하지 않습니다.");
     if (data.password.length < 8) return setFormError("#signupError", "비밀번호는 8자 이상이어야 합니다.");
-    if (!state.verification.verified || state.verification.email !== data.email) return setFormError("#signupError", "이메일 인증을 완료해주세요.");
     if (state.accounts.some((item) => item.email.toLowerCase() === data.email.toLowerCase())) return setFormError("#signupError", "이미 가입된 이메일입니다.");
-    state.accounts.push({ email: data.email, password: data.password, nickname: data.nickname, verified: true }); state.session = { email: data.email };
+    if (!accountIdAvailable(data.accountId)) return setFormError("#signupError", "이미 사용 중인 계정 아이디입니다.");
+    data.displayName = String(data.displayName || "").trim();
+    state.accounts.push({ email: data.email, password: data.password, accountId: data.accountId, displayName: data.displayName, nickname: data.accountId, verified: true }); state.session = { email: data.email };
     state.profile = { ...state.profile, ...data, avatar: state.profile.avatar || "", highlights: state.profile.highlights || [] }; setFormError("#signupError", ""); saveAll(); dialogs.signup.close(); updateChrome(); return toast("가입되었습니다.");
   }
   if (event.target.id === "uploadForm") return createPost(event.target);
   if (event.target.id === "commentForm") return createComment(event.target);
   if (event.target.id === "highlightCreateForm") return createHighlight(event.target);
-  if (event.target.id === "profileEditForm") { const data = Object.fromEntries(new FormData(event.target)); delete data.avatar; state.profile = { ...state.profile, ...data, avatar: state.pendingAvatar || state.profile.avatar }; state.pendingAvatar = null; saveAll(); dialogs.profileEdit.close(); return renderProfile(); }
+  if (event.target.id === "profileEditForm") {
+    const data = Object.fromEntries(new FormData(event.target)); delete data.avatar; data.accountId = sanitizeAccountId(data.accountId); data.nickname = data.accountId; data.displayName = data.displayName || state.profile.displayName || data.accountId;
+    if (!data.accountId || !String(data.displayName || "").trim()) return toast("계정 아이디와 이름을 입력해주세요.", "error");
+    if (!accountIdAvailable(data.accountId)) return toast("이미 사용 중인 계정 아이디입니다.", "error");
+    state.profile = { ...state.profile, ...data, avatar: state.pendingAvatar || state.profile.avatar };
+    const account = state.accounts.find((item) => item.email === state.session?.email);
+    if (account) Object.assign(account, { accountId: data.accountId, displayName: data.displayName, nickname: data.accountId });
+    state.pendingAvatar = null; saveAll(); dialogs.profileEdit.close(); return renderProfile();
+  }
   if (event.target.id === "wikiEditForm") return saveWiki(event.target);
   if (event.target.id === "chatForm") { const input = $("#chatInput"); if (!input.value.trim()) return; sendMessage("text", input.value.trim()); input.value = ""; }
 });
@@ -1160,7 +1174,7 @@ function createComment(form) {
   const post = state.posts.find((item) => item.id === state.activePost); const body = $("#commentInput").value.trim(); if (!body) return;
   const entry = { id: crypto.randomUUID(), author: state.profile.nickname, body, likes: 0, liked: false, authorLiked: state.profile.nickname === post.author, createdAt: Date.now(), replies: [] };
   if (state.replyTarget) post.comments.find((item) => item.id === state.replyTarget.comment).replies.push({ ...entry, replies: undefined }); else post.comments.push(entry);
-  state.replyTarget = null; form.reset(); saveAll(); renderComments();
+  state.replyTarget = null; form.reset(); saveAll(); renderComments(); refreshPostCard(post.id);
 }
 function saveWiki(form) {
   const school = state.schools.find((item) => item.id === state.selectedSchool); const data = Object.fromEntries(new FormData(form));
@@ -1316,7 +1330,7 @@ async function loadNationalSchools() {
   }
 }
 
-window.addEventListener("load", async () => { openAirDb(); populateTimeSelects(); await handleOauthCallback(); render(); setTimeout(() => $("#loading").classList.add("done"), 350); await loadNationalSchools(); if (state.view === "map") renderMap(); });
+window.addEventListener("load", async () => { openAirDb(); populateTimeSelects(); render(); setTimeout(() => $("#loading").classList.add("done"), 350); await loadNationalSchools(); if (state.view === "map") renderMap(); });
 window.addEventListener("scroll", () => {
   if (state.view !== "feed" || innerHeight + scrollY < document.documentElement.scrollHeight - 240) return;
   const available = orderedPosts().length; if (state.feedLimit >= available) return; state.feedLimit += 6; renderFeed();
